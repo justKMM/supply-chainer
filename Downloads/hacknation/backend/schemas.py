@@ -1,0 +1,225 @@
+"""Pydantic models matching the Ferrari Supply Chain data schemas."""
+
+from __future__ import annotations
+from pydantic import BaseModel, Field
+from typing import Optional
+from datetime import datetime
+import uuid
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def make_id(prefix: str = "msg") -> str:
+    return f"{prefix}-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+
+
+# ── AgentFact (Registry Schema) ─────────────────────────────────────────────
+
+class ProductSpec(BaseModel):
+    material: Optional[str] = None
+    diameter_mm: Optional[float] = None
+    weight_kg: Optional[float] = None
+    max_temp_celsius: Optional[float] = None
+    displacement_cc: Optional[float] = None
+    power_hp: Optional[float] = None
+    voltage: Optional[float] = None
+
+class Product(BaseModel):
+    product_id: str
+    name: str
+    category: str
+    subcategory: Optional[str] = None
+    specifications: dict = {}
+    unit_price_eur: float
+    currency: str = "EUR"
+    min_order_quantity: int = 1
+    lead_time_days: int = 14
+
+class ProductionCapacity(BaseModel):
+    units_per_month: int
+    current_utilization_pct: float
+
+class Capabilities(BaseModel):
+    products: list[Product] = []
+    services: list[str] = []
+    production_capacity: Optional[ProductionCapacity] = None
+
+class Identity(BaseModel):
+    legal_entity: str
+    registration_country: str
+    vat_id: Optional[str] = None
+    duns_number: Optional[str] = None
+
+class Certification(BaseModel):
+    type: str
+    description: str = ""
+    issued_by: str = ""
+    valid_until: Optional[str] = None
+    status: str = "active"
+
+class Location(BaseModel):
+    lat: float
+    lon: float
+    city: str = ""
+    country: str = ""
+
+class SiteInfo(BaseModel):
+    site_id: str
+    city: str
+    country: str
+    lat: float
+    lon: float
+    capabilities: list[str] = []
+
+class LocationInfo(BaseModel):
+    headquarters: Optional[Location] = None
+    manufacturing_sites: list[SiteInfo] = []
+    shipping_regions: list[str] = []
+
+class ESGRating(BaseModel):
+    provider: str
+    score: float
+    tier: str
+    valid_until: Optional[str] = None
+
+class Compliance(BaseModel):
+    jurisdictions: list[str] = []
+    regulations: list[str] = []
+    sanctions_clear: bool = True
+    esg_rating: Optional[ESGRating] = None
+
+class InsuranceInfo(BaseModel):
+    product_liability: bool = True
+    max_coverage_eur: float = 0
+
+class Policies(BaseModel):
+    payment_terms: str = "Net 30"
+    incoterms: list[str] = []
+    accepted_currencies: list[str] = ["EUR"]
+    insurance: Optional[InsuranceInfo] = None
+    min_contract_value_eur: float = 0
+    nda_required: bool = False
+
+class Trust(BaseModel):
+    trust_score: float = 0.5
+    years_in_operation: int = 0
+    ferrari_tier_status: str = "pending"
+    past_contracts: int = 0
+    on_time_delivery_pct: float = 0
+    defect_rate_ppm: float = 0
+    dispute_count_12m: int = 0
+
+class NetworkInfo(BaseModel):
+    endpoint: str = ""
+    protocol: str = "HTTP/JSON"
+    api_version: str = "1.0"
+    supported_message_types: list[str] = []
+    framework: str = "plain_python"
+    heartbeat_url: str = ""
+
+class UpstreamDependency(BaseModel):
+    material: str
+    typical_supplier_role: str
+    critical: bool = False
+
+class AgentFact(BaseModel):
+    agent_id: str
+    name: str
+    role: str
+    description: str = ""
+    capabilities: Capabilities = Capabilities()
+    identity: Optional[Identity] = None
+    certifications: list[Certification] = []
+    location: Optional[LocationInfo] = None
+    compliance: Optional[Compliance] = None
+    policies: Optional[Policies] = None
+    trust: Optional[Trust] = None
+    network: Optional[NetworkInfo] = None
+    upstream_dependencies: list[UpstreamDependency] = []
+    registered_at: str = ""
+    last_heartbeat: str = ""
+    status: str = "active"
+
+
+# ── Message Schema (Agent-to-Agent) ─────────────────────────────────────────
+
+class MessageMetadata(BaseModel):
+    hop_count: int = 1
+    origin: str = ""
+    trace_path: list[str] = []
+
+class Message(BaseModel):
+    message_id: str = Field(default_factory=lambda: make_id("msg"))
+    conversation_id: str = ""
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    from_agent: str = Field(alias="from", default="")
+    to_agent: str = Field(alias="to", default="")
+    type: str = ""
+    priority: str = "normal"
+    payload: dict = {}
+    metadata: MessageMetadata = MessageMetadata()
+
+    class Config:
+        populate_by_name = True
+
+
+# ── Trigger Request ─────────────────────────────────────────────────────────
+
+class TriggerRequest(BaseModel):
+    intent: str = "Buy all parts required to assemble one Ferrari 296 GTB"
+    budget_eur: float = 500000
+
+
+# ── Frontend Data Shapes ────────────────────────────────────────────────────
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    role: str
+    color: str = "#2196F3"
+    location: Optional[dict] = None
+    trust_score: Optional[float] = None
+    status: str = "active"
+    size: int = 30
+
+class GraphEdge(BaseModel):
+    source: str = Field(alias="from")
+    target: str = Field(alias="to")
+    type: str = ""
+    label: str = ""
+    value_eur: Optional[float] = None
+    message_count: int = 0
+    status: str = ""
+
+    class Config:
+        populate_by_name = True
+
+class LiveMessage(BaseModel):
+    message_id: str = Field(default_factory=lambda: make_id("msg"))
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    from_id: str = ""
+    from_label: str = ""
+    to_id: str = ""
+    to_label: str = ""
+    type: str = ""
+    summary: str = ""
+    detail: str = ""
+    color: str = "#2196F3"
+    icon: str = "info"
+
+class HeroMetric(BaseModel):
+    label: str
+    value: str
+    trend: Optional[str] = None
+
+class DashboardData(BaseModel):
+    hero_metrics: list[HeroMetric] = []
+    cost_breakdown: list[dict] = []
+    timeline_items: list[dict] = []
+    supplier_markers: list[dict] = []
+    supplier_routes: list[dict] = []
+    risk_items: list[dict] = []
+    reasoning_log: list[dict] = []
+    negotiations: list[dict] = []
+    discovery_results: dict = {}
+    compliance_summary: dict = {}
