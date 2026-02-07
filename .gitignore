@@ -1,0 +1,3 @@
+# FastAPI backend
+.venv/
+__pycache__/
