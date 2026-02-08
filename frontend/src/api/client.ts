@@ -12,9 +12,8 @@ import type {
   TrustSummary,
 } from "@/data/types";
 
-const BASE =
-  (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
-  "http://localhost:8000";
+const envBase = (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL;
+const BASE = envBase ?? "http://localhost:8000";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, init);
