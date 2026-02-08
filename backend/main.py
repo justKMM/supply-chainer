@@ -14,21 +14,22 @@ Endpoints:
   GET    /api/stream                  → SSE live message feed
   GET    /api/report                  → Get latest report
   GET    /api/progress                → Get cascade progress
-  Backend serves API only (frontend is separate)
+  GET    /                            → Serve frontend
 """
 
 from __future__ import annotations
-from fastapi import FastAPI
+import asyncio, json, os
+from pathlib import Path
+from fastapi import FastAPI, Query, Request
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
-from backend.controllers.registry_controller import router as registry_router
-from backend.controllers.pubsub_controller import router as pubsub_router
-from backend.controllers.reputation_controller import router as reputation_router
-from backend.controllers.stream_controller import router as stream_router
-from backend.controllers.catalogue_controller import router as catalogue_router
-from backend.controllers.policy_controller import router as policy_router
-from backend.controllers.escalation_controller import router as escalation_router
-from backend.controllers.agent_protocol_controller import router as agent_protocol_router
+from backend.schemas import AgentFact, TriggerRequest, LiveMessage, make_id
+from backend.registry import registry
+from backend.cascade import run_cascade, cascade_state
+from backend.pubsub import event_bus
+from backend.reputation import reputation_ledger
 
 app = FastAPI(title="Ferrari Supply Chain Agents", version="1.0.0")
 
