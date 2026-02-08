@@ -23,7 +23,6 @@ from backend.schemas import (
     make_id,
 )
 from backend.services.registry_service import registry
-from backend.agents.agent_implementations import get_agent_implementation
 
 
 # ── In-memory task store ─────────────────────────────────────────────────────
@@ -98,9 +97,9 @@ def process_task(agent: AgentFact, task: A2ATask, message: A2AMessage) -> A2ATas
     # Transition to working
     task.status = A2ATaskStatus(state="working")
 
-    # Invoke agent implementation to handle the message
-    impl = get_agent_implementation(agent)
-    response_text = impl.handle_task_message(message)
+    # Generate response
+    input_text = message.parts[0].text if message.parts else ""
+    response_text = f"[{agent.name}] Processed: {input_text[:100]}" if input_text else f"[{agent.name}] Task completed"
 
     # Create agent response message
     agent_msg = A2AMessage(
