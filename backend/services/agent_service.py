@@ -29,6 +29,7 @@ client = get_async_client()
 
 # ── OpenAI reasoning helper ─────────────────────────────────────────────────
 
+
 async def ai_reason(agent_name: str, role: str, prompt: str) -> str:
     """Ask OpenAI to reason as a specific supply-chain agent."""
     try:
@@ -45,8 +46,11 @@ async def ai_reason(agent_name: str, role: str, prompt: str) -> str:
                 },
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=200,
-            temperature=0.7,
+            max_completion_tokens=10000,
+            # temperature=0.7,
+        )
+        print(
+            f"Agent {agent_name} with role {role} has prompt {prompt} and answer {resp.choices[0].message.content}"
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
@@ -64,16 +68,16 @@ async def ai_expand_intent(intent: str) -> dict:
                     "content": (
                         "You are an intent resolver for Ferrari supply chain. Given a procurement intent, "
                         "return ONLY valid JSON object with keys: component_intents, logistics_intents, compliance_intents. "
-                        "component_intents: array of component sourcing intents (e.g. \"Source EU-compliant brake systems\"). "
-                        "logistics_intents: array of logistics intents (e.g. \"Coordinate EU road freight to Maranello\"). "
-                        "compliance_intents: array of compliance intents (e.g. \"Validate IATF_16949 certification\"). "
+                        'component_intents: array of component sourcing intents (e.g. "Source EU-compliant brake systems"). '
+                        'logistics_intents: array of logistics intents (e.g. "Coordinate EU road freight to Maranello"). '
+                        'compliance_intents: array of compliance intents (e.g. "Validate IATF_16949 certification"). '
                         "Each array should have 1-3 items."
                     ),
                 },
                 {"role": "user", "content": intent},
             ],
-            max_tokens=400,
-            temperature=0.3,
+            max_completion_tokens=10000,
+            # temperature=0.3,
         )
         text = resp.choices[0].message.content.strip()
         if "```" in text:
@@ -100,16 +104,16 @@ async def ai_decompose_bom(intent: str) -> list[dict]:
                     "content": (
                         "You are a Ferrari production engineer. Given a procurement intent, "
                         "decompose it into component categories needed. Return ONLY valid JSON array. "
-                        "Each item: {\"category\": str, \"parts_count\": int, "
-                        "\"key_components\": [str, str, str]}. "
+                        'Each item: {"category": str, "parts_count": int, '
+                        '"key_components": [str, str, str]}. '
                         "Include: powertrain, braking_system, body_chassis, electronics, "
                         "interior, suspension, wheels_tires, exhaust_emissions."
                     ),
                 },
                 {"role": "user", "content": intent},
             ],
-            max_tokens=800,
-            temperature=0.3,
+            max_completion_tokens=10000,
+            # temperature=0.3,
         )
         text = resp.choices[0].message.content.strip()
         return _parse_json_array(text)
@@ -120,22 +124,62 @@ async def ai_decompose_bom(intent: str) -> list[dict]:
 
 
 DEFAULT_BOM: list[dict] = [
-    {"category": "powertrain", "parts_count": 12,
-     "key_components": ["V6 Engine Block", "Turbocharger Assembly", "8-Speed DCT Gearbox"]},
-    {"category": "braking_system", "parts_count": 6,
-     "key_components": ["Carbon Ceramic Disc 396mm", "Brake Caliper Set", "Brake Fluid Reservoir"]},
-    {"category": "body_chassis", "parts_count": 8,
-     "key_components": ["Carbon Fiber Monocoque", "Aluminum Subframe", "Body Panels"]},
-    {"category": "electronics", "parts_count": 9,
-     "key_components": ["ECU", "Infotainment Unit", "Sensor Array"]},
-    {"category": "interior", "parts_count": 5,
-     "key_components": ["Leather Seat Assembly", "Steering Wheel", "Dashboard Module"]},
-    {"category": "suspension", "parts_count": 4,
-     "key_components": ["MagneRide Dampers", "Control Arms", "Anti-Roll Bar"]},
-    {"category": "wheels_tires", "parts_count": 2,
-     "key_components": ["Forged Alloy Wheels 20\"", "Pirelli P Zero Tires"]},
-    {"category": "exhaust_emissions", "parts_count": 1,
-     "key_components": ["Catalytic Converter + Exhaust System"]},
+    {
+        "category": "powertrain",
+        "parts_count": 12,
+        "key_components": [
+            "V6 Engine Block",
+            "Turbocharger Assembly",
+            "8-Speed DCT Gearbox",
+        ],
+    },
+    {
+        "category": "braking_system",
+        "parts_count": 6,
+        "key_components": [
+            "Carbon Ceramic Disc 396mm",
+            "Brake Caliper Set",
+            "Brake Fluid Reservoir",
+        ],
+    },
+    {
+        "category": "body_chassis",
+        "parts_count": 8,
+        "key_components": [
+            "Carbon Fiber Monocoque",
+            "Aluminum Subframe",
+            "Body Panels",
+        ],
+    },
+    {
+        "category": "electronics",
+        "parts_count": 9,
+        "key_components": ["ECU", "Infotainment Unit", "Sensor Array"],
+    },
+    {
+        "category": "interior",
+        "parts_count": 5,
+        "key_components": [
+            "Leather Seat Assembly",
+            "Steering Wheel",
+            "Dashboard Module",
+        ],
+    },
+    {
+        "category": "suspension",
+        "parts_count": 4,
+        "key_components": ["MagneRide Dampers", "Control Arms", "Anti-Roll Bar"],
+    },
+    {
+        "category": "wheels_tires",
+        "parts_count": 2,
+        "key_components": ['Forged Alloy Wheels 20"', "Pirelli P Zero Tires"],
+    },
+    {
+        "category": "exhaust_emissions",
+        "parts_count": 1,
+        "key_components": ["Catalytic Converter + Exhaust System"],
+    },
 ]
 
 
@@ -154,6 +198,7 @@ def _default_bom() -> list[dict]:
 
 
 # ── Seed Data: Pre-built AgentFacts for all supply chain actors ─────────────
+
 
 def create_seed_agents() -> list[AgentFact]:
     """Create realistic supplier agents for the Ferrari supply chain."""

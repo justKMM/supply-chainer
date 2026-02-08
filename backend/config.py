@@ -4,7 +4,7 @@ import os
 
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
-OPENAI_MODEL = "gpt-4o-mini"
+OPENAI_MODEL = "gpt-5-nano"
 
 HOST = "0.0.0.0"
 PORT = 8000
