@@ -8,24 +8,27 @@ import AgentRegistry from "./pages/AgentRegistry";
 import SupplyGraph from "./pages/SupplyGraph";
 import Coordination from "./pages/Coordination";
 import NotFound from "./pages/NotFound";
+import { CascadeProvider } from "./state/cascadeStore";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/agents" element={<AgentRegistry />} />
-          <Route path="/graph" element={<SupplyGraph />} />
-          <Route path="/coordination" element={<Coordination />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
+    <CascadeProvider>
+      <TooltipProvider>
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/agents" element={<AgentRegistry />} />
+            <Route path="/graph" element={<SupplyGraph />} />
+            <Route path="/coordination" element={<Coordination />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
+    </CascadeProvider>
   </QueryClientProvider>
 );
 

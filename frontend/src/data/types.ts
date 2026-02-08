@@ -1,34 +1,6 @@
 // ── Frontend display types ──────────────────────────────────────────────────
 
 export type AgentRole = "Supplier" | "Manufacturer" | "Logistics" | "Retailer" | "Procurement" | string;
-export type AgentStatus = "online" | "offline" | "busy" | "active";
-export type EventType = "discovery" | "response" | "negotiation" | "coordination" | "execution" | string;
-export type EventStatus = "completed" | "in-progress" | "pending" | "failed";
-
-export interface Agent {
-  id: string;
-  name: string;
-  role: AgentRole;
-  status: AgentStatus;
-  capabilities: string[];
-  region: string;
-  jurisdiction: string;
-  endpoint: string;
-  trustScore: number;
-  lastSeen: string;
-  messagesProcessed: number;
-  activeContracts: number;
-}
-
-export interface CoordinationEvent {
-  id: string;
-  timestamp: string;
-  from: string;
-  to: string;
-  type: EventType;
-  message: string;
-  status: EventStatus;
-}
 
 // ── Backend API response types ──────────────────────────────────────────────
 
@@ -42,8 +14,8 @@ export interface LiveMessage {
   type: string;
   summary: string;
   detail: string;
-  color: string;
-  icon: string;
+  color?: string;
+  icon?: string;
 }
 
 export interface HeroMetric {
@@ -75,9 +47,10 @@ export interface SupplierMarker {
 
 export interface RiskItem {
   type: string;
-  component: string;
-  detail: string;
-  mitigation: string;
+  component?: string;
+  supplier?: string;
+  detail?: string;
+  mitigation?: string;
 }
 
 export interface Negotiation {
@@ -97,6 +70,7 @@ export interface GraphNode {
   color: string;
   size: number;
   trust_score?: number;
+  risk_score?: number;
   x?: number;
   y?: number;
 }
@@ -108,6 +82,7 @@ export interface GraphEdge {
   label: string;
   value_eur?: number;
   message_count: number;
+  risk_level?: number;
 }
 
 export interface ComplianceSummary {
@@ -115,34 +90,53 @@ export interface ComplianceSummary {
   passed: number;
   flagged: number;
   failed: number;
-  flags: string[];
+  flags: Array<{ agent_id: string; detail: string }>;
 }
 
 export interface DiscoveryResults {
   agents_discovered: number;
   agents_qualified: number;
   agents_disqualified: number;
-  discovery_paths: Record<string, string[]>;
+  discovery_paths: Array<{
+    need: string;
+    query: string;
+    selected: string;
+    results_count: number;
+  }>;
 }
 
 export interface ReputationScore {
   agent_id: string;
   agent_name: string;
   composite_score: number;
+  delivery?: number;
+  quality?: number;
+  pricing?: number;
+  compliance?: number;
+  reliability?: number;
+  transactions?: number;
   total_attestations: number;
+  trend?: string;
 }
 
 export interface PubsubSummary {
   total_events: number;
   total_subscriptions: number;
   total_deliveries: number;
-  subscriptions: Array<{ agent_id: string; agent_name: string; topics: string[] }>;
+  subscriptions: Array<{ agent_id: string; agent_name: string; categories: string[] }>;
 }
 
 export interface IntelligenceFeedItem {
-  event: string;
+  event: {
+    severity: string;
+    category: string;
+    source: string;
+    title: string;
+    description: string;
+    recommended_actions: string[];
+  };
   recipient_count: number;
-  ai_reaction: string;
+  ai_reaction?: string;
 }
 
 export interface ReasoningLogEntry {
@@ -171,14 +165,95 @@ export interface CascadeReport {
     total_agents_scored: number;
     total_attestations: number;
     leaderboard: ReputationScore[];
-    chain_verifications: Record<string, unknown>[];
+    chain_verifications: Record<string, { valid: boolean; length: number }>;
   };
   reasoning_log: ReasoningLogEntry[];
+  profit_summary?: ProfitSummary | null;
+  policy_evaluation?: PolicyEvaluation | null;
+  intent_expansion?: IntentExpansion | null;
+  event_log?: EventLogEntry[];
+  delivery_target?: {
+    requested_date: string | null;
+    requested_days: number | null;
+  };
 }
 
 export interface CascadeProgress {
   running: boolean;
   progress: number;
+}
+
+export interface CatalogueProduct {
+  product_id: string;
+  name: string;
+  description?: string;
+  selling_price_eur: number;
+  intent_template?: string;
+  currency?: string;
+}
+
+export interface ProfitSummary {
+  total_revenue_eur: number;
+  total_cost_eur: number;
+  total_profit_eur: number;
+  profit_per_item_eur: number;
+  quantity: number;
+  margin_pct: number;
+}
+
+export interface PolicySpec {
+  jurisdiction: string;
+  max_risk_score: number;
+  min_trust_score: number;
+  min_esg_score: number;
+  forbid_single_supplier: boolean;
+}
+
+export interface PolicyEvaluation {
+  compliant: boolean;
+  violations: Record<string, unknown>[];
+  explanations: string[];
+}
+
+export interface IntentExpansion {
+  root_intent: string;
+  component_intents: string[];
+  logistics_intents: string[];
+  compliance_intents: string[];
+}
+
+export interface EventLogEntry {
+  type: string;
+  stage: string;
+  impact: Record<string, number>;
+}
+
+export interface TrustSubmission {
+  agent_id: string;
+  dimension: string;
+  score: number;
+  context?: string;
+  rater_id?: string;
+}
+
+export interface TrustSummary {
+  agent_id: string;
+  dimension: string;
+  score: number;
+  submissions: number;
+}
+
+export interface SupplierSummary {
+  agent_id: string;
+  name: string;
+  role: string;
+  status?: string;
+  location?: {
+    headquarters?: { city?: string; country?: string };
+  };
+  trust?: {
+    trust_score?: number;
+  };
 }
 
 // ── Backend AgentFact (from registry) ───────────────────────────────────────

@@ -1,8 +1,9 @@
 import { AppLayout } from "@/components/AppLayout";
 import * as api from "@/api/client";
 import { useState, useEffect, useMemo } from "react";
-import type { CascadeReport, GraphNode, GraphEdge } from "@/data/types";
+import type { GraphNode, GraphEdge } from "@/data/types";
 import { Loader2 } from "lucide-react";
+import { useCascadeStore } from "@/state/cascadeStore";
 
 const roleColorMap: Record<string, string> = {
   Supplier: "hsl(210, 85%, 50%)",
@@ -45,16 +46,20 @@ function layoutNodes(nodes: GraphNode[]): (GraphNode & { x: number; y: number })
 }
 
 const SupplyGraph = () => {
-  const [report, setReport] = useState<CascadeReport | null>(null);
+  const { report, setReport } = useCascadeStore();
   const [loading, setLoading] = useState(true);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
 
   useEffect(() => {
+    if (report) {
+      setLoading(false);
+      return;
+    }
     api.getReport()
       .then(setReport)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [report, setReport]);
 
   const nodes = useMemo(
     () => layoutNodes(report?.graph_nodes || []),
@@ -64,6 +69,7 @@ const SupplyGraph = () => {
   const edges: GraphEdge[] = report?.graph_edges || [];
 
   const getNodePos = (id: string) => nodes.find((n) => n.id === id);
+  const hovered = nodes.find((n) => n.id === hoveredNode);
 
   return (
     <AppLayout>
@@ -105,7 +111,19 @@ const SupplyGraph = () => {
             </div>
 
             {/* Graph Canvas */}
-            <div className="rounded-lg border border-border bg-card overflow-hidden">
+            <div className="relative rounded-lg border border-border bg-card overflow-hidden">
+              {hovered && (
+                <div className="absolute right-6 top-6 rounded-md border border-border bg-background/90 p-3 text-xs font-mono shadow-md">
+                  <div className="font-semibold text-foreground">{hovered.label}</div>
+                  <div className="text-muted-foreground">{hovered.role}</div>
+                  <div className="mt-1 text-muted-foreground">
+                    Trust: {hovered.trust_score !== undefined ? `${Math.round(hovered.trust_score * 100)}%` : "—"}
+                  </div>
+                  <div className="text-muted-foreground">
+                    Risk: {hovered.risk_score !== undefined ? hovered.risk_score.toFixed(2) : "—"}
+                  </div>
+                </div>
+              )}
               <svg viewBox="0 0 800 520" className="w-full h-auto" style={{ minHeight: 420 }}>
                 {/* Edges */}
                 {edges.map((edge) => {

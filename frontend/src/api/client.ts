@@ -1,6 +1,19 @@
-import type { AgentFact, CascadeReport, CascadeProgress, LiveMessage } from "@/data/types";
+import type {
+  AgentFact,
+  CascadeReport,
+  CascadeProgress,
+  LiveMessage,
+  CatalogueProduct,
+  PolicyEvaluation,
+  PolicySpec,
+  SupplierSummary,
+  TrustSubmission,
+  TrustSummary,
+} from "@/data/types";
 
-const BASE = "";
+const BASE =
+  (import.meta as { env?: { VITE_API_BASE_URL?: string } }).env?.VITE_API_BASE_URL ||
+  "http://localhost:8000";
 
 async function fetchJSON<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${url}`, init);
@@ -34,13 +47,29 @@ export function searchAgents(params: {
   return fetchJSON(`/registry/search?${qs}`);
 }
 
+// ── Catalogue & Suppliers ───────────────────────────────────────────────────
+
+export function getCatalogue(): Promise<CatalogueProduct[]> {
+  return fetchJSON("/api/catalogue");
+}
+
+export function getSuppliers(): Promise<SupplierSummary[]> {
+  return fetchJSON("/api/suppliers");
+}
+
 // ── Cascade ─────────────────────────────────────────────────────────────────
 
-export function triggerCascade(intent: string, budgetEur: number) {
+export function triggerCascade(params: {
+  intent?: string;
+  budget_eur?: number;
+  product_id?: string;
+  quantity?: number;
+  desired_delivery_date?: string;
+}) {
   return fetchJSON<{ status: string; intent: string }>("/registry/trigger", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ intent, budget_eur: budgetEur }),
+    body: JSON.stringify(params),
   });
 }
 
@@ -56,6 +85,34 @@ export function getReport(): Promise<CascadeReport> {
 
 export function getLogs(): Promise<LiveMessage[]> {
   return fetchJSON("/registry/logs");
+}
+
+// ── Policy ──────────────────────────────────────────────────────────────────
+
+export function getPolicy(): Promise<PolicySpec> {
+  return fetchJSON("/api/policy");
+}
+
+export function evaluatePolicy(plan: Record<string, unknown>): Promise<PolicyEvaluation> {
+  return fetchJSON("/api/policy/evaluate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(plan),
+  });
+}
+
+// ── Trust ───────────────────────────────────────────────────────────────────
+
+export function getContextualTrust(agentId: string): Promise<TrustSummary> {
+  return fetchJSON(`/api/trust/contextual/${agentId}`);
+}
+
+export function submitTrustRating(payload: TrustSubmission): Promise<void> {
+  return fetchJSON("/api/trust/submit", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 // ── Reputation ──────────────────────────────────────────────────────────────
@@ -90,6 +147,16 @@ export function getPubsubSummary() {
 
 export function getPubsubEvents() {
   return fetchJSON("/api/pubsub/events");
+}
+
+// ── Simulation ──────────────────────────────────────────────────────────────
+
+export function simulateSupplierFailure(agent_id: string) {
+  return fetchJSON("/api/simulate/supplier-failure", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agent_id }),
+  });
 }
 
 // ── SSE Stream ──────────────────────────────────────────────────────────────
