@@ -14,14 +14,11 @@ Endpoints:
   GET    /api/stream                  → SSE live message feed
   GET    /api/report                  → Get latest report
   GET    /api/progress                → Get cascade progress
-  GET    /                            → Serve frontend
+  Backend serves API only (frontend is separate)
 """
 
 from __future__ import annotations
-from pathlib import Path
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.controllers.registry_controller import router as registry_router
@@ -49,14 +46,3 @@ app.include_router(escalation_router)
 app.include_router(pubsub_router)
 app.include_router(reputation_router)
 app.include_router(stream_router)
-
-
-# ── Serve Frontend ───────────────────────────────────────────────────────────
-
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
-app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
-
-@app.get("/", response_class=HTMLResponse)
-async def serve_frontend():
-    index_path = FRONTEND_DIR / "index.html"
-    return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
