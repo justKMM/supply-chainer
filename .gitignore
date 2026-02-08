@@ -1,3 +1,15 @@
 # FastAPI backend
+# Virtual environment
 .venv/
-__pycache__/
+# Compiled Python files
+__pycache__/__pycache__/
+*.pyc
+*.pyo
+# Environment variables
+.env
+# Keys
+*.key
+# Documentation
+*.docx
+# Claude
+.claude/
