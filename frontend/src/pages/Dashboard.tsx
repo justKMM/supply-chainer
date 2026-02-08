@@ -4,9 +4,8 @@ import { EventRow } from "@/components/EventRow";
 import { RoleBadge } from "@/components/RoleBadge";
 import { useSSE } from "@/hooks/useSSE";
 import * as api from "@/api/client";
-import { useState, useEffect, useCallback, useMemo } from "react";
-import type { AgentFact, CatalogueProduct, SupplierSummary } from "@/data/types";
-import { useCascadeStore } from "@/state/cascadeStore";
+import { useState, useEffect, useCallback } from "react";
+import type { AgentFact, CascadeReport, CascadeProgress } from "@/data/types";
 import {
   Users,
   Radio,
@@ -18,36 +17,25 @@ import {
   ArrowUpRight,
   Play,
   Loader2,
+  Rss,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const Dashboard = () => {
   const [agents, setAgents] = useState<AgentFact[]>([]);
+  const [report, setReport] = useState<CascadeReport | null>(null);
+  const [progress, setProgress] = useState<CascadeProgress>({ running: false, progress: 0 });
   const [triggering, setTriggering] = useState(false);
-  const { messages, connected, connect, clear } = useSSE();
-  const { progress, report, setProgress, setReport, controls, setControls } = useCascadeStore();
-  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
-  const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
-  const selectedProductId = controls.productId;
-  const quantity = controls.quantity;
-  const budgetEur = controls.budgetEur;
-  const desiredDeliveryDate = controls.desiredDeliveryDate;
-  // Load agents on mount
+  const [pubsubStats, setPubsubStats] = useState<{ total_events: number; total_deliveries: number } | null>(null);
+  const { messages, connected, connect, disconnect, clear } = useSSE();
+
+  // Load agents, report, and progress on mount
   useEffect(() => {
     api.listAgents().then(setAgents).catch(() => {});
+    api.getReport().then(setReport).catch(() => {});
+    api.getProgress().then(setProgress).catch(() => {});
+    api.getPubsubSummary().then((s: any) => setPubsubStats({ total_events: s.total_events || 0, total_deliveries: s.total_deliveries || 0 })).catch(() => {});
   }, []);
-
-  useEffect(() => {
-    api.getCatalogue()
-      .then((items) => {
-        setCatalogue(items);
-        if (items.length && !selectedProductId) {
-          setControls({ productId: items[0].product_id });
-        }
-      })
-      .catch(() => {});
-    api.getSuppliers().then(setSuppliers).catch(() => {});
-  }, [selectedProductId, setControls]);
 
   // Poll progress while cascade is running
   useEffect(() => {
@@ -58,30 +46,27 @@ const Dashboard = () => {
         setProgress(p);
         if (!p.running) {
           clearInterval(interval);
-          // Cascade finished — fetch report and updated agents
+          // Cascade finished — fetch report, agents, pubsub
           api.getReport().then(setReport).catch(() => {});
           api.listAgents().then(setAgents).catch(() => {});
+          api.getPubsubSummary().then((s: any) => setPubsubStats({ total_events: s.total_events || 0, total_deliveries: s.total_deliveries || 0 })).catch(() => {});
         }
       } catch {
         // ignore
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [progress.running, setProgress, setReport]);
+  }, [progress.running]);
 
   const handleTrigger = useCallback(async () => {
     setTriggering(true);
     setReport(null);
     clear();
     try {
-      const hasProduct = Boolean(selectedProductId);
-      await api.triggerCascade({
-        intent: hasProduct ? undefined : "Buy all parts required to assemble one Ferrari 296 GTB",
-        budget_eur: budgetEur,
-        product_id: hasProduct ? selectedProductId : undefined,
-        quantity: Math.max(1, quantity),
-        desired_delivery_date: desiredDeliveryDate || undefined,
-      });
+      await api.triggerCascade(
+        "Buy all parts required to assemble one Ferrari 296 GTB",
+        500000,
+      );
       setProgress({ running: true, progress: 0 });
       connect();
     } catch (err) {
@@ -89,16 +74,12 @@ const Dashboard = () => {
     } finally {
       setTriggering(false);
     }
-  }, [connect, clear, selectedProductId, budgetEur, quantity, desiredDeliveryDate, setProgress, setReport]);
+  }, [connect, clear]);
 
   // Derive metrics
   const agentCount = agents.length;
   const messageCount = messages.length;
   const heroMetrics = report?.dashboard?.hero_metrics;
-  const selectedProduct = useMemo(
-    () => catalogue.find((c) => c.product_id === selectedProductId),
-    [catalogue, selectedProductId],
-  );
 
   return (
     <AppLayout>
@@ -131,83 +112,19 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Trigger Controls */}
-        <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                Product
-              </label>
-              <select
-                className="mt-1 w-full rounded-md border border-border bg-background px-2 py-2 text-xs"
-                value={selectedProductId}
-                onChange={(e) => setControls({ productId: e.target.value })}
-                disabled={progress.running}
-              >
-                {catalogue.map((item) => (
-                  <option key={item.product_id} value={item.product_id}>
-                    {item.name} (EUR {item.selling_price_eur.toLocaleString()})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                Quantity
-              </label>
-              <input
-                type="number"
-                min={1}
-                className="mt-1 w-full rounded-md border border-border bg-background px-2 py-2 text-xs"
-                value={quantity}
-                onChange={(e) => setControls({ quantity: Math.max(1, Number(e.target.value)) })}
-                disabled={progress.running}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                Budget (EUR)
-              </label>
-              <input
-                type="number"
-                min={1}
-                className="mt-1 w-full rounded-md border border-border bg-background px-2 py-2 text-xs"
-                value={budgetEur}
-                onChange={(e) => setControls({ budgetEur: Math.max(1, Number(e.target.value)) })}
-                disabled={progress.running}
-              />
-            </div>
-            <div>
-              <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">
-                Desired Delivery
-              </label>
-              <input
-                type="date"
-                className="mt-1 w-full rounded-md border border-border bg-background px-2 py-2 text-xs"
-                value={desiredDeliveryDate}
-                onChange={(e) => setControls({ desiredDeliveryDate: e.target.value })}
-                disabled={progress.running}
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[10px] text-muted-foreground font-mono">
-              {selectedProduct ? `Intent: ${selectedProduct.name}` : "Select a product to build intent"}
-            </div>
-            <button
-              onClick={handleTrigger}
-              disabled={triggering || progress.running}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-mono text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {triggering ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              {progress.running ? "Cascade Running..." : "Trigger Procurement Cascade"}
-            </button>
-          </div>
-        </div>
+        {/* Trigger Button */}
+        <button
+          onClick={handleTrigger}
+          disabled={triggering || progress.running}
+          className="flex items-center gap-2 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-mono text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {triggering ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <Play className="w-4 h-4" />
+          )}
+          {progress.running ? "Cascade Running..." : "Trigger Procurement Cascade"}
+        </button>
 
         {/* Progress Bar */}
         {progress.running && (
@@ -254,10 +171,11 @@ const Dashboard = () => {
                 variant="accent"
               />
               <MetricCard
-                label="Progress"
-                value={`${Math.round(progress.progress)}%`}
-                icon={<Clock className="w-4 h-4" />}
+                label="Pub-Sub Events"
+                value={pubsubStats ? pubsubStats.total_events : 0}
+                icon={<Rss className="w-4 h-4" />}
                 variant="success"
+                trend={pubsubStats && pubsubStats.total_deliveries > 0 ? `${pubsubStats.total_deliveries} deliveries` : "No events yet"}
               />
             </>
           )}
@@ -340,153 +258,6 @@ const Dashboard = () => {
                   message={msg.summary}
                   color={msg.color}
                 />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Profit + Policy + Intent */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="rounded-lg border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Profit Summary</h3>
-            {!report?.profit_summary && (
-              <p className="text-xs text-muted-foreground font-mono">Run a cascade to see profit metrics.</p>
-            )}
-            {report?.profit_summary && (
-              <div className="space-y-1 text-xs font-mono">
-                <div className="flex justify-between"><span>Total Revenue</span><span>EUR {report.profit_summary.total_revenue_eur.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Total Cost</span><span>EUR {report.profit_summary.total_cost_eur.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Total Profit</span><span>EUR {report.profit_summary.total_profit_eur.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Profit / Item</span><span>EUR {report.profit_summary.profit_per_item_eur.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span>Margin</span><span>{report.profit_summary.margin_pct.toFixed(2)}%</span></div>
-              </div>
-            )}
-          </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Policy Evaluation</h3>
-            {!report?.policy_evaluation && (
-              <p className="text-xs text-muted-foreground font-mono">No policy results yet.</p>
-            )}
-            {report?.policy_evaluation && (
-              <div className="space-y-2 text-xs font-mono">
-                <span className={`inline-block px-2 py-0.5 rounded ${report.policy_evaluation.compliant ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive"}`}>
-                  {report.policy_evaluation.compliant ? "Compliant" : "Non-compliant"}
-                </span>
-                {(report.policy_evaluation.explanations || []).slice(0, 3).map((exp, idx) => (
-                  <div key={idx} className="text-muted-foreground">{exp}</div>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="rounded-lg border border-border bg-card p-4">
-            <h3 className="text-sm font-semibold text-foreground mb-2">Intent Expansion</h3>
-            {!report?.intent_expansion && (
-              <p className="text-xs text-muted-foreground font-mono">No intent expansion available.</p>
-            )}
-            {report?.intent_expansion && (
-              <div className="space-y-2 text-xs font-mono">
-                <div className="text-muted-foreground">Root: {report.intent_expansion.root_intent}</div>
-                <div>Components: {report.intent_expansion.component_intents.length}</div>
-                <div>Logistics: {report.intent_expansion.logistics_intents.length}</div>
-                <div>Compliance: {report.intent_expansion.compliance_intents.length}</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Event Log + Suppliers */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="rounded-lg border border-border bg-card">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground">Event Log</h3>
-            </div>
-            <div className="max-h-[320px] overflow-y-auto">
-              {!report?.event_log?.length && (
-                <div className="px-4 py-6 text-center text-xs text-muted-foreground font-mono">
-                  No events yet.
-                </div>
-              )}
-              {(report?.event_log || []).map((ev, idx) => (
-                <div key={`${ev.type}-${idx}`} className="px-4 py-3 border-b border-border/50 text-xs font-mono">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold">{ev.type}</span>
-                    <span className="text-muted-foreground">{ev.stage}</span>
-                  </div>
-                  <div className="text-muted-foreground mt-1">
-                    {Object.entries(ev.impact || {}).map(([k, v]) => `${k}: ${v}`).join(" · ")}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-card">
-            <div className="px-4 py-3 border-b border-border flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-foreground">Suppliers</h3>
-              <span className="text-[10px] text-muted-foreground font-mono">{suppliers.length} listed</span>
-            </div>
-            <div className="max-h-[320px] overflow-y-auto">
-              {suppliers.length === 0 && (
-                <div className="px-4 py-6 text-center text-xs text-muted-foreground font-mono">
-                  No suppliers loaded.
-                </div>
-              )}
-              {suppliers.map((s) => (
-                <div key={s.agent_id} className="px-4 py-3 border-b border-border/50">
-                  <div className="text-sm font-semibold text-foreground">{s.name || s.agent_id}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">
-                    {s.role} · {s.location?.headquarters?.city || "—"}{s.location?.headquarters?.country ? `, ${s.location.headquarters.country}` : ""}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground font-mono">
-                    Trust: {s.trust?.trust_score !== undefined ? `${Math.round(s.trust.trust_score * 100)}%` : "—"}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Reputation + Intelligence */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="rounded-lg border border-border bg-card">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground">Reputation Leaderboard</h3>
-            </div>
-            <div className="max-h-[320px] overflow-y-auto">
-              {!(report?.reputation_summary?.leaderboard?.length) && (
-                <div className="px-4 py-6 text-center text-xs text-muted-foreground font-mono">
-                  No reputation data yet.
-                </div>
-              )}
-              {(report?.reputation_summary?.leaderboard || []).map((r) => (
-                <div key={r.agent_id} className="px-4 py-3 border-b border-border/50">
-                  <div className="text-sm font-semibold text-foreground">{r.agent_name || r.agent_id}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">
-                    Composite: {(r.composite_score * 100).toFixed(1)}% · Attestations: {r.total_attestations}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="rounded-lg border border-border bg-card">
-            <div className="px-4 py-3 border-b border-border">
-              <h3 className="text-sm font-semibold text-foreground">Intelligence Feed</h3>
-            </div>
-            <div className="max-h-[320px] overflow-y-auto">
-              {!(report?.intelligence_feed?.length) && (
-                <div className="px-4 py-6 text-center text-xs text-muted-foreground font-mono">
-                  No intelligence signals yet.
-                </div>
-              )}
-              {(report?.intelligence_feed || []).map((sig, idx) => (
-                <div key={idx} className="px-4 py-3 border-b border-border/50">
-                  <div className="text-sm font-semibold text-foreground">{sig.event.title}</div>
-                  <div className="text-[10px] text-muted-foreground font-mono">
-                    {sig.event.category} · {sig.event.severity} · {sig.recipient_count} recipients
-                  </div>
-                  <div className="text-[10px] text-muted-foreground mt-1">
-                    {sig.event.description}
-                  </div>
-                </div>
               ))}
             </div>
           </div>
