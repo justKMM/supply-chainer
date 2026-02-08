@@ -54,6 +54,12 @@ async def list_suppliers(role: str | None = Query(None)):
     return registry.list_suppliers(role=role)
 
 
+@router.get("/api/agents")
+async def list_agents_protocol():
+    """Protocol-ready agent discovery list."""
+    return registry.list_protocol_agents()
+
+
 @router.get("/registry/agent/{agent_id}")
 async def get_agent(agent_id: str):
     agent = registry.get(agent_id)

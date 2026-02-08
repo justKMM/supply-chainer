@@ -22,3 +22,11 @@ BUDGET_CEILING_EUR = 500000
 TRUST_THRESHOLD = 0.70
 REGISTRY_MIN_TRUST = 0.70
 MIN_ESG_SCORE = 50
+
+# Protocol transport
+ENABLE_EXTERNAL_AGENT_TRANSPORT = os.environ.get("ENABLE_EXTERNAL_AGENT_TRANSPORT", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+AGENT_PROTOCOL_SECRET = os.environ.get("AGENT_PROTOCOL_SECRET", "")

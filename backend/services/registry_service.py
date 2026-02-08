@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime
 from typing import Optional
 
-from backend.schemas import AgentFact, LiveMessage
+from backend.schemas import AgentFact, LiveMessage, NetworkInfo
 
 
 def _get_reputation_score(agent_id: str) -> float | None:
@@ -69,6 +69,25 @@ class AgentRegistry:
 
     def list_all(self) -> list[AgentFact]:
         return list(self._agents.values())
+
+    def list_protocol_agents(self) -> list[dict]:
+        """Return protocol-ready metadata for discovery."""
+        results = []
+        for agent in self._agents.values():
+            net = agent.network or NetworkInfo()
+            results.append(
+                {
+                    "agent_id": agent.agent_id,
+                    "name": agent.name,
+                    "role": agent.role,
+                    "status": agent.status,
+                    "endpoint": net.endpoint,
+                    "protocol": net.protocol,
+                    "api_version": net.api_version,
+                    "supported_message_types": net.supported_message_types,
+                }
+            )
+        return results
 
     SUPPLIER_ROLES = frozenset({"tier_1_supplier", "tier_2_supplier", "raw_material_supplier"})
 

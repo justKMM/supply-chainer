@@ -28,6 +28,7 @@ from backend.controllers.stream_controller import router as stream_router
 from backend.controllers.catalogue_controller import router as catalogue_router
 from backend.controllers.policy_controller import router as policy_router
 from backend.controllers.escalation_controller import router as escalation_router
+from backend.controllers.agent_protocol_controller import router as agent_protocol_router
 
 app = FastAPI(title="Ferrari Supply Chain Agents", version="1.0.0")
 
@@ -46,3 +47,4 @@ app.include_router(escalation_router)
 app.include_router(pubsub_router)
 app.include_router(reputation_router)
 app.include_router(stream_router)
+app.include_router(agent_protocol_router)

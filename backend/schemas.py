@@ -163,6 +163,30 @@ class Message(BaseModel):
         populate_by_name = True
 
 
+class AgentProtocolMessage(BaseModel):
+    protocol_version: str = "0.1"
+    message_id: str = Field(default_factory=lambda: make_id("apm"))
+    conversation_id: str = ""
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    from_agent: str = ""
+    to_agent: str = ""
+    message_type: str = ""
+    payload: dict = Field(default_factory=dict)
+    reply_to: str = ""
+    signature: str | None = None
+
+
+class AgentProtocolReceipt(BaseModel):
+    protocol_version: str = "0.1"
+    receipt_id: str = Field(default_factory=lambda: make_id("apr"))
+    received_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    message_id: str = ""
+    from_agent: str = ""
+    to_agent: str = ""
+    status: str = "accepted"
+    detail: str = ""
+
+
 # ── Product Catalogue ───────────────────────────────────────────────────────
 
 class CatalogueProduct(BaseModel):

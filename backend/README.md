@@ -404,3 +404,65 @@ MIN_ESG_SCORE = 50
   10. Intelligence feed + pub/sub summary
   11. Final report / dashboard / graph
 ---
+
+## Agent Protocol MVP (NANDA-like Simulation)
+
+This repo includes a lightweight agent-to-agent HTTP protocol to simulate a NANDA-like Internet of Agents.
+
+### Discovery
+
+- `GET /api/agents` returns protocol-ready metadata for all registered agents:
+  - `agent_id`, `name`, `role`, `status`
+  - `endpoint`, `protocol`, `api_version`, `supported_message_types`
+
+### Message Receive Endpoint
+
+- `POST /agent/{agent_id}` accepts an `AgentProtocolMessage` payload and returns an `AgentProtocolReceipt`.
+- This is used by the in-repo transport adapter to simulate external delivery.
+
+### Protocol Shapes
+
+`AgentProtocolMessage` (HTTP/JSON):
+
+```json
+{
+  "protocol_version": "0.1",
+  "message_id": "apm-...",
+  "conversation_id": "",
+  "timestamp": "2026-01-01T00:00:00Z",
+  "from_agent": "ferrari-procurement-01",
+  "to_agent": "brembo-brake-supplier-01",
+  "message_type": "request_quote",
+  "payload": { "summary": "...", "detail": "..." },
+  "reply_to": "",
+  "signature": null
+}
+```
+
+`AgentProtocolReceipt` (HTTP/JSON):
+
+```json
+{
+  "protocol_version": "0.1",
+  "receipt_id": "apr-...",
+  "received_at": "2026-01-01T00:00:00Z",
+  "message_id": "apm-...",
+  "from_agent": "ferrari-procurement-01",
+  "to_agent": "brembo-brake-supplier-01",
+  "status": "accepted",
+  "detail": "Message received"
+}
+```
+
+### Transport Toggle + Signing
+
+- `ENABLE_EXTERNAL_AGENT_TRANSPORT=true` enables HTTP delivery alongside SSE logging.
+- `AGENT_PROTOCOL_SECRET=...` enables HMAC signature on outbound messages and verification on receive.
+
+### Example (curl)
+
+```bash
+curl -X POST http://localhost:8000/agent/brembo-brake-supplier-01 \
+  -H "Content-Type: application/json" \
+  -d '{"protocol_version":"0.1","message_id":"apm-123","from_agent":"ferrari-procurement-01","to_agent":"brembo-brake-supplier-01","message_type":"request_quote","payload":{"summary":"Quote request"},"reply_to":""}'
+```

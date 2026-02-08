@@ -11,8 +11,8 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta
 
-from backend.config import BUDGET_CEILING_EUR, TRUST_THRESHOLD
-from backend.schemas import LiveMessage, make_id
+from backend.config import BUDGET_CEILING_EUR, TRUST_THRESHOLD, ENABLE_EXTERNAL_AGENT_TRANSPORT
+from backend.schemas import LiveMessage, AgentProtocolMessage, make_id
 from backend.services.registry_service import registry
 from backend.services.agent_service import ai_reason
 from backend.services.risk_propagation_service import risk_propagation
@@ -129,6 +129,25 @@ def _emit(
         icon=icon,
     )
     registry.log_message(msg)
+    if ENABLE_EXTERNAL_AGENT_TRANSPORT:
+        try:
+            from backend.services.agent_transport import send_to_agent
+            proto_msg = AgentProtocolMessage(
+                message_id=msg.message_id,
+                from_agent=from_id,
+                to_agent=to_id,
+                message_type=msg_type,
+                payload={
+                    "summary": summary,
+                    "detail": detail,
+                    "color": color,
+                    "icon": icon,
+                },
+                reply_to="",
+            )
+            send_to_agent(proto_msg)
+        except Exception:
+            pass
     return msg
 
 
