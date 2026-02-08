@@ -1,21 +1,19 @@
 """
-Verifiable Reputation & Attestation System
+Verifiable Reputation & Attestation System.
 
-Trust scores are derived from actual transaction history, not self-reported data.
+Trust scores are derived from transaction history, not self-reported data.
 Each transaction produces a cryptographically-signed attestation record.
-
-Architecture:
-  - TransactionRecord captures every completed interaction outcome
-  - Attestation is a signed, verifiable record of performance
-  - ReputationLedger aggregates records into composite trust scores
-  - Scores are computed from: delivery performance, quality, negotiation reliability,
-    compliance history, and dispute resolution
 """
 
 from __future__ import annotations
-import hashlib, json
+
+import hashlib
+import json
+import random
 from datetime import datetime
+
 from pydantic import BaseModel, Field
+
 from backend.schemas import make_id
 
 
@@ -66,22 +64,25 @@ class Attestation(BaseModel):
     category: str = ""  # delivery, quality, pricing, compliance, reliability
     score: float = 0.0  # 0.0 to 1.0 for this specific attestation
     detail: str = ""
-    evidence: dict = {}  # supporting data
+    evidence: dict = Field(default_factory=dict)  # supporting data
 
     # Integrity
     hash: str = ""  # SHA-256 of the attestation content
     previous_hash: str = ""  # chain link to previous attestation for this agent
 
     def compute_hash(self) -> str:
-        content = json.dumps({
-            "agent_id": self.agent_id,
-            "attested_by": self.attested_by,
-            "category": self.category,
-            "score": self.score,
-            "transaction_id": self.transaction_id,
-            "timestamp": self.timestamp,
-            "previous_hash": self.previous_hash,
-        }, sort_keys=True)
+        content = json.dumps(
+            {
+                "agent_id": self.agent_id,
+                "attested_by": self.attested_by,
+                "category": self.category,
+                "score": self.score,
+                "transaction_id": self.transaction_id,
+                "timestamp": self.timestamp,
+                "previous_hash": self.previous_hash,
+            },
+            sort_keys=True,
+        )
         self.hash = hashlib.sha256(content.encode()).hexdigest()
         return self.hash
 
@@ -107,13 +108,15 @@ class ReputationScore(BaseModel):
     trend: str = "stable"  # improving, stable, declining
 
     # Weights used
-    weights: dict = {
-        "delivery": 0.30,
-        "quality": 0.25,
-        "pricing": 0.20,
-        "compliance": 0.15,
-        "reliability": 0.10,
-    }
+    weights: dict = Field(
+        default_factory=lambda: {
+            "delivery": 0.30,
+            "quality": 0.25,
+            "pricing": 0.20,
+            "compliance": 0.15,
+            "reliability": 0.10,
+        }
+    )
 
 
 # ── Reputation Ledger ────────────────────────────────────────────────────────
@@ -133,7 +136,8 @@ class ReputationLedger:
         record.delivery_variance_days = record.actual_delivery_days - record.promised_delivery_days
         if record.quoted_price_eur > 0:
             record.price_variance_pct = round(
-                ((record.final_price_eur - record.quoted_price_eur) / record.quoted_price_eur) * 100, 2
+                ((record.final_price_eur - record.quoted_price_eur) / record.quoted_price_eur) * 100,
+                2,
             )
         self._transactions.append(record)
 
@@ -144,14 +148,20 @@ class ReputationLedger:
         # Delivery attestation
         delivery_score = 1.0 if record.on_time else max(0.0, 1.0 - abs(record.delivery_variance_days) * 0.1)
         att = Attestation(
-            agent_id=record.agent_id, agent_name=record.agent_name,
-            attested_by=record.counterparty_id, attested_by_name=record.counterparty_name,
+            agent_id=record.agent_id,
+            agent_name=record.agent_name,
+            attested_by=record.counterparty_id,
+            attested_by_name=record.counterparty_name,
             transaction_id=record.record_id,
             category="delivery",
             score=round(delivery_score, 3),
-            detail=f"{'On-time' if record.on_time else f'{record.delivery_variance_days}d late'} delivery of {record.quantity_delivered}/{record.quantity_ordered} units",
-            evidence={"promised_days": record.promised_delivery_days, "actual_days": record.actual_delivery_days,
-                      "variance": record.delivery_variance_days},
+            detail=f"{'On-time' if record.on_time else f'{record.delivery_variance_days}d late'} delivery of "
+            f"{record.quantity_delivered}/{record.quantity_ordered} units",
+            evidence={
+                "promised_days": record.promised_delivery_days,
+                "actual_days": record.actual_delivery_days,
+                "variance": record.delivery_variance_days,
+            },
             previous_hash=prev_hash,
         )
         att.compute_hash()
@@ -163,8 +173,10 @@ class ReputationLedger:
             0.8 if record.quality_accepted else 0.3
         )
         att = Attestation(
-            agent_id=record.agent_id, agent_name=record.agent_name,
-            attested_by=record.counterparty_id, attested_by_name=record.counterparty_name,
+            agent_id=record.agent_id,
+            agent_name=record.agent_name,
+            attested_by=record.counterparty_id,
+            attested_by_name=record.counterparty_name,
             transaction_id=record.record_id,
             category="quality",
             score=round(quality_score, 3),
@@ -179,14 +191,19 @@ class ReputationLedger:
         # Pricing attestation
         pricing_score = 1.0 if record.price_honored else max(0.0, 1.0 - abs(record.price_variance_pct) * 0.05)
         att = Attestation(
-            agent_id=record.agent_id, agent_name=record.agent_name,
-            attested_by=record.counterparty_id, attested_by_name=record.counterparty_name,
+            agent_id=record.agent_id,
+            agent_name=record.agent_name,
+            attested_by=record.counterparty_id,
+            attested_by_name=record.counterparty_name,
             transaction_id=record.record_id,
             category="pricing",
             score=round(pricing_score, 3),
             detail=f"Price {'honored' if record.price_honored else 'deviated'} ({record.price_variance_pct:+.1f}%)",
-            evidence={"quoted": record.quoted_price_eur, "final": record.final_price_eur,
-                      "variance_pct": record.price_variance_pct},
+            evidence={
+                "quoted": record.quoted_price_eur,
+                "final": record.final_price_eur,
+                "variance_pct": record.price_variance_pct,
+            },
             previous_hash=prev_hash,
         )
         att.compute_hash()
@@ -195,8 +212,10 @@ class ReputationLedger:
 
         # Compliance attestation
         att = Attestation(
-            agent_id=record.agent_id, agent_name=record.agent_name,
-            attested_by="eu-compliance-agent-01", attested_by_name="EU Compliance Validator",
+            agent_id=record.agent_id,
+            agent_name=record.agent_name,
+            attested_by="eu-compliance-agent-01",
+            attested_by_name="EU Compliance Validator",
             transaction_id=record.record_id,
             category="compliance",
             score=1.0 if record.compliance_passed else 0.0,
@@ -213,8 +232,10 @@ class ReputationLedger:
             0.8 if record.dispute_raised and record.dispute_resolved else 1.0
         )
         att = Attestation(
-            agent_id=record.agent_id, agent_name=record.agent_name,
-            attested_by=record.counterparty_id, attested_by_name=record.counterparty_name,
+            agent_id=record.agent_id,
+            agent_name=record.agent_name,
+            attested_by=record.counterparty_id,
+            attested_by_name=record.counterparty_name,
             transaction_id=record.record_id,
             category="reliability",
             score=round(reliability_score, 3),
@@ -249,10 +270,20 @@ class ReputationLedger:
         compliance = sum(by_category.get("compliance", [0])) / max(len(by_category.get("compliance", [1])), 1)
         reliability = sum(by_category.get("reliability", [0])) / max(len(by_category.get("reliability", [1])), 1)
 
-        weights = {"delivery": 0.30, "quality": 0.25, "pricing": 0.20, "compliance": 0.15, "reliability": 0.10}
-        composite = (delivery * weights["delivery"] + quality * weights["quality"] +
-                     pricing * weights["pricing"] + compliance * weights["compliance"] +
-                     reliability * weights["reliability"])
+        weights = {
+            "delivery": 0.30,
+            "quality": 0.25,
+            "pricing": 0.20,
+            "compliance": 0.15,
+            "reliability": 0.10,
+        }
+        composite = (
+            delivery * weights["delivery"]
+            + quality * weights["quality"]
+            + pricing * weights["pricing"]
+            + compliance * weights["compliance"]
+            + reliability * weights["reliability"]
+        )
 
         # Determine trend
         prev = self._scores.get(agent_id)
@@ -264,7 +295,8 @@ class ReputationLedger:
                 trend = "declining"
 
         self._scores[agent_id] = ReputationScore(
-            agent_id=agent_id, agent_name=agent_name,
+            agent_id=agent_id,
+            agent_name=agent_name,
             delivery_score=round(delivery, 3),
             quality_score=round(quality, 3),
             pricing_score=round(pricing, 3),
@@ -282,7 +314,7 @@ class ReputationLedger:
     def get_all_scores(self) -> list[ReputationScore]:
         return sorted(self._scores.values(), key=lambda s: s.composite_score, reverse=True)
 
-    def get_attestations(self, agent_id: str = None) -> list[Attestation]:
+    def get_attestations(self, agent_id: str | None = None) -> list[Attestation]:
         if agent_id:
             return [a for a in self._attestations if a.agent_id == agent_id]
         return list(self._attestations)
@@ -298,12 +330,20 @@ class ReputationLedger:
         for i, att in enumerate(chain):
             # Recompute hash
             expected = att.hash
-            recomputed = hashlib.sha256(json.dumps({
-                "agent_id": att.agent_id, "attested_by": att.attested_by,
-                "category": att.category, "score": att.score,
-                "transaction_id": att.transaction_id, "timestamp": att.timestamp,
-                "previous_hash": att.previous_hash,
-            }, sort_keys=True).encode()).hexdigest()
+            recomputed = hashlib.sha256(
+                json.dumps(
+                    {
+                        "agent_id": att.agent_id,
+                        "attested_by": att.attested_by,
+                        "category": att.category,
+                        "score": att.score,
+                        "transaction_id": att.transaction_id,
+                        "timestamp": att.timestamp,
+                        "previous_hash": att.previous_hash,
+                    },
+                    sort_keys=True,
+                ).encode()
+            ).hexdigest()
 
             if expected != recomputed:
                 valid = False
@@ -323,19 +363,22 @@ class ReputationLedger:
             "total_transactions": len(self._transactions),
             "total_attestations": len(self._attestations),
             "leaderboard": [
-                {"agent_id": s.agent_id, "agent_name": s.agent_name,
-                 "composite_score": s.composite_score,
-                 "delivery": s.delivery_score, "quality": s.quality_score,
-                 "pricing": s.pricing_score, "compliance": s.compliance_score,
-                 "reliability": s.reliability_score,
-                 "transactions": s.total_transactions,
-                 "attestations": s.total_attestations,
-                 "trend": s.trend}
+                {
+                    "agent_id": s.agent_id,
+                    "agent_name": s.agent_name,
+                    "composite_score": s.composite_score,
+                    "delivery": s.delivery_score,
+                    "quality": s.quality_score,
+                    "pricing": s.pricing_score,
+                    "compliance": s.compliance_score,
+                    "reliability": s.reliability_score,
+                    "transactions": s.total_transactions,
+                    "attestations": s.total_attestations,
+                    "trend": s.trend,
+                }
                 for s in scores
             ],
-            "chain_verifications": {
-                s.agent_id: self.verify_chain(s.agent_id) for s in scores
-            },
+            "chain_verifications": {s.agent_id: self.verify_chain(s.agent_id) for s in scores},
         }
 
     def clear(self):
@@ -347,3 +390,53 @@ class ReputationLedger:
 
 # Global singleton
 reputation_ledger = ReputationLedger()
+
+
+def record_transactions(final_orders: dict, emit) -> dict:
+    """Record transactions and return updated reputation summary."""
+    for _, order in final_orders.items():
+        agent = order["agent"]
+        product = order["product"]
+        # Simulate realistic transaction outcomes
+        on_time = random.random() > 0.15  # 85% on-time
+        actual_days = product.lead_time_days + (0 if on_time else random.randint(1, 5))
+        defects = 0 if random.random() > 0.1 else random.randint(1, 3)
+        price_honored = random.random() > 0.05
+
+        record = TransactionRecord(
+            agent_id=agent.agent_id,
+            agent_name=agent.name,
+            counterparty_id="ferrari-procurement-01",
+            counterparty_name="Ferrari Procurement AI",
+            transaction_type="delivery_completed",
+            po_number=order.get("po_number", ""),
+            promised_delivery_days=product.lead_time_days,
+            actual_delivery_days=actual_days,
+            on_time=on_time,
+            quoted_price_eur=order["initial_price"],
+            final_price_eur=order["final_price"],
+            price_honored=price_honored,
+            quality_accepted=defects == 0,
+            defects_found=defects,
+            quantity_ordered=order["quantity"],
+            quantity_delivered=order["quantity"],
+            compliance_passed=True,
+            dispute_raised=False,
+        )
+        attestations = reputation_ledger.record_transaction(record)
+        score = reputation_ledger.get_score(agent.agent_id)
+
+        emit(
+            "reputation-ledger",
+            "Reputation Ledger",
+            agent.agent_id,
+            agent.name,
+            "attestation",
+            f"{agent.name}: {len(attestations)} attestations recorded, composite score {score.composite_score:.3f}",
+            f"Delivery: {score.delivery_score:.2f} | Quality: {score.quality_score:.2f} | "
+            f"Pricing: {score.pricing_score:.2f}",
+            "#00BCD4",
+            "certificate",
+        )
+
+    return reputation_ledger.get_summary()

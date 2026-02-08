@@ -1,9 +1,11 @@
 """In-memory Agent Registry — the DNS of the supply chain agent network."""
 
 from __future__ import annotations
+
 import asyncio
 from datetime import datetime
 from typing import Optional
+
 from backend.schemas import AgentFact, LiveMessage
 
 

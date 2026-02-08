@@ -3,20 +3,16 @@ Structured Event Broadcast Layer (Pub-Sub)
 
 Agents subscribe to disruption categories relevant to their supply graph position.
 Events are typed, categorized, and routed only to relevant subscribers.
-
-Architecture:
-  - DisruptionCategory enum defines all event types
-  - Agents subscribe based on their role + upstream dependencies
-  - EventBus routes typed events to matching subscribers
-  - Each event carries severity, affected scope, and recommended actions
 """
 
 from __future__ import annotations
-import asyncio
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+
 from pydantic import BaseModel, Field
+
 from backend.schemas import make_id
 
 
@@ -47,13 +43,13 @@ class SupplyChainEvent(BaseModel):
     title: str = ""
     description: str = ""
     source: str = ""  # which agent or intelligence feed produced this
-    affected_regions: list[str] = []
-    affected_categories: list[str] = []  # product categories affected
-    affected_agents: list[str] = []
+    affected_regions: list[str] = Field(default_factory=list)
+    affected_categories: list[str] = Field(default_factory=list)  # product categories affected
+    affected_agents: list[str] = Field(default_factory=list)
     impact_assessment: str = ""
-    recommended_actions: list[str] = []
-    data: dict = {}  # arbitrary payload (prices, coordinates, etc.)
-    acknowledged_by: list[str] = []
+    recommended_actions: list[str] = Field(default_factory=list)
+    data: dict = Field(default_factory=dict)  # arbitrary payload (prices, coordinates, etc.)
+    acknowledged_by: list[str] = Field(default_factory=list)
     resolved: bool = False
 
 
@@ -63,8 +59,8 @@ class Subscription(BaseModel):
     agent_id: str
     agent_name: str
     categories: list[DisruptionCategory]
-    regions: list[str] = []  # geographic filter
-    product_categories: list[str] = []  # product category filter
+    regions: list[str] = Field(default_factory=list)  # geographic filter
+    product_categories: list[str] = Field(default_factory=list)  # product category filter
     subscribed_at: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
 
 
@@ -122,8 +118,14 @@ class EventBus:
         self._events: list[SupplyChainEvent] = []
         self._delivery_log: list[dict] = []  # who received what
 
-    def subscribe(self, agent_id: str, agent_name: str, role: str,
-                  regions: list[str] = None, product_categories: list[str] = None) -> Subscription:
+    def subscribe(
+        self,
+        agent_id: str,
+        agent_name: str,
+        role: str,
+        regions: list[str] | None = None,
+        product_categories: list[str] | None = None,
+    ) -> Subscription:
         """Auto-subscribe an agent based on its role and graph position."""
         categories = ROLE_DEFAULT_SUBSCRIPTIONS.get(role, [DisruptionCategory.PRODUCTION_HALT])
         sub = Subscription(
@@ -162,14 +164,16 @@ class EventBus:
                     continue
 
             recipients.append(agent_id)
-            self._delivery_log.append({
-                "event_id": event.event_id,
-                "agent_id": agent_id,
-                "agent_name": sub.agent_name,
-                "category": event.category.value,
-                "severity": event.severity,
-                "timestamp": event.timestamp,
-            })
+            self._delivery_log.append(
+                {
+                    "event_id": event.event_id,
+                    "agent_id": agent_id,
+                    "agent_name": sub.agent_name,
+                    "category": event.category.value,
+                    "severity": event.severity,
+                    "timestamp": event.timestamp,
+                }
+            )
 
         event.acknowledged_by = recipients
         return recipients
@@ -179,8 +183,11 @@ class EventBus:
             if evt.event_id == event_id and agent_id not in evt.acknowledged_by:
                 evt.acknowledged_by.append(agent_id)
 
-    def get_events(self, category: Optional[DisruptionCategory] = None,
-                   severity: Optional[str] = None) -> list[SupplyChainEvent]:
+    def get_events(
+        self,
+        category: Optional[DisruptionCategory] = None,
+        severity: Optional[str] = None,
+    ) -> list[SupplyChainEvent]:
         results = list(self._events)
         if category:
             results = [e for e in results if e.category == category]
@@ -209,9 +216,13 @@ class EventBus:
             "by_category": by_category,
             "by_severity": by_severity,
             "subscriptions": [
-                {"agent_id": s.agent_id, "agent_name": s.agent_name,
-                 "categories": [c.value for c in s.categories],
-                 "regions": s.regions, "product_categories": s.product_categories}
+                {
+                    "agent_id": s.agent_id,
+                    "agent_name": s.agent_name,
+                    "categories": [c.value for c in s.categories],
+                    "regions": s.regions,
+                    "product_categories": s.product_categories,
+                }
                 for s in self._subscriptions.values()
             ],
         }
