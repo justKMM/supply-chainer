@@ -9,7 +9,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import * as api from "@/api/client";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
@@ -21,12 +22,19 @@ const navItems = [
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const [agentCount, setAgentCount] = useState(0);
+
+  useEffect(() => {
+    api.listAgents()
+      .then((agents) => setAgentCount(agents.length))
+      .catch(() => {});
+  }, []);
 
   return (
     <aside
       className={`${
         collapsed ? "w-16" : "w-64"
-      } flex flex-col border-r border-border bg-sidebar transition-all duration-300 shrink-0`}
+      } sticky top-0 flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 shrink-0`}
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-16 border-b border-border">
@@ -74,9 +82,9 @@ export function AppSidebar() {
             <span className="text-xs text-muted-foreground font-mono">NETWORK ONLINE</span>
           </div>
           <div className="text-[10px] text-muted-foreground font-mono space-y-0.5">
-            <div>Agents: 5/5 active</div>
-            <div>Latency: 23ms avg</div>
-            <div>Uptime: 99.97%</div>
+            <div>Agents: {agentCount}</div>
+            <div>Latency: —</div>
+            <div>Uptime: —</div>
           </div>
         </div>
       )}

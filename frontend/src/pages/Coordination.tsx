@@ -3,7 +3,8 @@ import { EventRow } from "@/components/EventRow";
 import { useSSE } from "@/hooks/useSSE";
 import * as api from "@/api/client";
 import { useState, useEffect, useCallback } from "react";
-import type { AgentFact, CascadeProgress, CascadeReport } from "@/data/types";
+import type { AgentFact, CatalogueProduct } from "@/data/types";
+import { useCascadeStore } from "@/state/cascadeStore";
 import { Radio, Zap, CheckCircle, Clock, AlertCircle, Play, Loader2, Square } from "lucide-react";
 
 const PIPELINE_STAGES = [
@@ -20,14 +21,29 @@ const PIPELINE_STAGES = [
 
 const Coordination = () => {
   const [agents, setAgents] = useState<AgentFact[]>([]);
-  const [progress, setProgress] = useState<CascadeProgress>({ running: false, progress: 0 });
-  const [report, setReport] = useState<CascadeReport | null>(null);
   const [triggering, setTriggering] = useState(false);
   const { messages, connected, connect, disconnect, clear } = useSSE();
+  const { progress, report, setProgress, setReport, controls, setControls } = useCascadeStore();
+  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
+  const selectedProductId = controls.productId;
+  const quantity = controls.quantity;
+  const budgetEur = controls.budgetEur;
+  const desiredDeliveryDate = controls.desiredDeliveryDate;
 
   // Load agents
   useEffect(() => {
     api.listAgents().then(setAgents).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    api.getCatalogue()
+      .then((items) => {
+        setCatalogue(items);
+        if (items.length && !selectedProductId) {
+          setControls({ productId: items[0].product_id });
+        }
+      })
+      .catch(() => {});
   }, []);
 
   // Poll progress
@@ -45,17 +61,21 @@ const Coordination = () => {
       } catch { /* ignore */ }
     }, 1000);
     return () => clearInterval(interval);
-  }, [progress.running]);
+  }, [progress.running, setProgress, setReport]);
 
   const handleTrigger = useCallback(async () => {
     setTriggering(true);
     setReport(null);
     clear();
     try {
-      await api.triggerCascade(
-        "Buy all parts required to assemble one Ferrari 296 GTB",
-        500000,
-      );
+      const hasProduct = Boolean(selectedProductId);
+      await api.triggerCascade({
+        intent: hasProduct ? undefined : "Buy all parts required to assemble one Ferrari 296 GTB",
+        budget_eur: budgetEur,
+        product_id: hasProduct ? selectedProductId : undefined,
+        quantity: Math.max(1, quantity),
+        desired_delivery_date: desiredDeliveryDate || undefined,
+      });
       setProgress({ running: true, progress: 0 });
       connect();
     } catch (err) {
@@ -63,10 +83,12 @@ const Coordination = () => {
     } finally {
       setTriggering(false);
     }
-  }, [connect, clear]);
+  }, [connect, clear, selectedProductId, budgetEur, quantity, desiredDeliveryDate, setProgress, setReport]);
 
   // Compute which pipeline stages are done based on progress
   const completedStages = Math.floor((progress.progress / 100) * PIPELINE_STAGES.length);
+
+  const selectedProduct = catalogue.find((c) => c.product_id === selectedProductId);
 
   return (
     <AppLayout>
@@ -81,6 +103,41 @@ const Coordination = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <select
+              className="hidden md:block rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
+              value={selectedProductId}
+              onChange={(e) => setControls({ productId: e.target.value })}
+              disabled={progress.running}
+            >
+              {catalogue.map((item) => (
+                <option key={item.product_id} value={item.product_id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={1}
+              className="hidden md:block w-20 rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
+              value={quantity}
+              onChange={(e) => setControls({ quantity: Math.max(1, Number(e.target.value)) })}
+              disabled={progress.running}
+            />
+            <input
+              type="number"
+              min={1}
+              className="hidden md:block w-28 rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
+              value={budgetEur}
+              onChange={(e) => setControls({ budgetEur: Math.max(1, Number(e.target.value)) })}
+              disabled={progress.running}
+            />
+            <input
+              type="date"
+              className="hidden md:block rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
+              value={desiredDeliveryDate}
+              onChange={(e) => setControls({ desiredDeliveryDate: e.target.value })}
+              disabled={progress.running}
+            />
             {connected && (
               <button
                 onClick={disconnect}
@@ -113,7 +170,7 @@ const Coordination = () => {
                   {progress.running ? "Active Cascade" : report ? "Cascade Complete" : "Ready to Launch"}
                 </h2>
                 <p className="text-[10px] text-muted-foreground font-mono">
-                  Intent: "Procure V8 engine assembly components — Ferrari 296 GTB"
+                  Intent: {selectedProduct ? selectedProduct.name : "Ferrari 296 GTB"}
                 </p>
               </div>
             </div>
