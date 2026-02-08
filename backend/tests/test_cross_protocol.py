@@ -21,6 +21,10 @@ def test_http_to_mcp_routing():
     sender = http_agents[0]  # Ferrari Procurement (HTTP)
     recipient = mcp_agent_list[0]  # QualityAI (MCP)
     
+    # Clear endpoints for local delivery test
+    sender.network.endpoint = ""
+    recipient.network.endpoint = ""
+    
     registry.register(sender)
     registry.register(recipient)
     
@@ -50,6 +54,10 @@ def test_mcp_to_a2a_routing():
     sender = mcp_agent_list[0]  # QualityAI (MCP)
     recipient = a2a_agent_list[0]  # LogistiX (A2A)
     
+    # Clear endpoints for local delivery test
+    sender.network.endpoint = ""
+    recipient.network.endpoint = ""
+    
     registry.register(sender)
     registry.register(recipient)
     
@@ -78,6 +86,10 @@ def test_a2a_to_mcp_routing():
     
     sender = a2a_agent_list[1]  # MarketIntel (A2A)
     recipient = mcp_agent_list[1]  # PredictMaint (MCP)
+    
+    # Clear endpoints for local delivery test
+    sender.network.endpoint = ""
+    recipient.network.endpoint = ""
     
     registry.register(sender)
     registry.register(recipient)

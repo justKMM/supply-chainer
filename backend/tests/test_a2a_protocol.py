@@ -86,6 +86,10 @@ def test_a2a_send_to_agent_local_delivery():
     sender = agents[0]  # LogistiX
     recipient = agents[1]  # MarketIntel
     
+    # Clear endpoints for local delivery test
+    sender.network.endpoint = ""
+    recipient.network.endpoint = ""
+    
     registry.register(sender)
     registry.register(recipient)
     
