@@ -62,6 +62,7 @@ async def run_quotes(qualified_agents: dict, report: dict, emit, ts, budget_eur:
                 "lead_time_days": product.lead_time_days,
                 "total_eur": total,
                 "quote_id": quote_id,
+                "ai_reasoning": reasoning,
             },
         )
 

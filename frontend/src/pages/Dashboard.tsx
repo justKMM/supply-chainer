@@ -36,7 +36,7 @@ const Dashboard = () => {
   const desiredDeliveryDate = controls.desiredDeliveryDate;
   // Load agents on mount
   useEffect(() => {
-    api.listAgents().then(setAgents).catch(() => {});
+    api.listAgents().then(setAgents).catch(() => { });
   }, []);
 
   useEffect(() => {
@@ -47,8 +47,8 @@ const Dashboard = () => {
           setControls({ productId: items[0].product_id });
         }
       })
-      .catch(() => {});
-    api.getSuppliers().then(setSuppliers).catch(() => {});
+      .catch(() => { });
+    api.getSuppliers().then(setSuppliers).catch(() => { });
   }, [selectedProductId, setControls]);
 
   // Poll progress while cascade is running
@@ -61,8 +61,8 @@ const Dashboard = () => {
         if (!p.running) {
           clearInterval(interval);
           // Cascade finished — fetch report and updated agents
-          api.getReport().then(setReport).catch(() => {});
-          api.listAgents().then(setAgents).catch(() => {});
+          api.getReport().then(setReport).catch(() => { });
+          api.listAgents().then(setAgents).catch(() => { });
         }
       } catch {
         // ignore
@@ -112,7 +112,7 @@ const Dashboard = () => {
               Network Dashboard
             </h1>
             <p className="text-sm text-muted-foreground font-mono mt-1">
-              NANDA Supply Chain Agent Network — Real-time Overview
+              Supply Chain Agent Network — Real-time Overview
             </p>
           </div>
           <div className="flex items-center gap-3">

@@ -10,8 +10,10 @@ from typing import Optional
 import requests
 
 from backend.config import AGENT_PROTOCOL_SECRET
-from backend.schemas import AgentProtocolMessage, AgentProtocolReceipt
+from backend.schemas import AgentProtocolMessage, AgentProtocolReceipt, LiveMessage
 from backend.services.registry_service import registry
+from backend.adapters.mcp_adapter import send_mcp
+from backend.adapters.a2a_adapter import send_a2a
 
 
 def _sign_payload(payload: dict, secret: str) -> str:
@@ -72,6 +74,19 @@ def send_to_agent(message: AgentProtocolMessage) -> AgentProtocolReceipt:
     endpoint = ""
     if agent and agent.network:
         endpoint = agent.network.endpoint
+    # Route by agent advertized protocol (default HTTP/JSON)
+    protocol = (agent.network.protocol if agent and agent.network and agent.network.protocol else "HTTP/JSON").upper()
+    
+    if protocol in ("HTTP/JSON", "HTTP"):
+        return send_protocol_message(message, endpoint)
+
+    if protocol == "MCP":
+        return send_mcp(endpoint, message, agent)
+
+    if protocol == "A2A":
+        return send_a2a(endpoint, message, agent)
+
+    # Unknown protocol — fall back to HTTP behavior
     return send_protocol_message(message, endpoint)
 
 

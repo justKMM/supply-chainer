@@ -85,6 +85,7 @@ async def run_discovery(bom: list[dict], report: dict, emit, ts) -> tuple[dict, 
                     "selected_agent": best.name,
                     "candidates": len(candidates),
                     "trust_score": best.trust.trust_score if best.trust else None,
+                    "ai_reasoning": reasoning,
                 },
             )
 

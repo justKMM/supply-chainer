@@ -3,9 +3,8 @@ import { EventRow } from "@/components/EventRow";
 import { useSSE } from "@/hooks/useSSE";
 import * as api from "@/api/client";
 import { useState, useEffect, useCallback } from "react";
-import type { AgentFact, CatalogueProduct } from "@/data/types";
-import { useCascadeStore } from "@/state/cascadeStore";
-import { Radio, Zap, CheckCircle, Clock, AlertCircle, Play, Loader2, Square } from "lucide-react";
+import type { AgentFact, CascadeProgress, CascadeReport } from "@/data/types";
+import { Radio, Zap, CheckCircle, Clock, AlertCircle, Play, Loader2, Square, Rss } from "lucide-react";
 
 const PIPELINE_STAGES = [
   "Intent Parsed",
@@ -21,29 +20,19 @@ const PIPELINE_STAGES = [
 
 const Coordination = () => {
   const [agents, setAgents] = useState<AgentFact[]>([]);
+  const [progress, setProgress] = useState<CascadeProgress>({ running: false, progress: 0 });
+  const [report, setReport] = useState<CascadeReport | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [pubsubEvents, setPubsubEvents] = useState<Array<{ event_type: string; severity: string; source_agent: string; affected_agents: string[]; timestamp: string; details: string }>>([]);
+  const [pubsubSubs, setPubsubSubs] = useState<Array<{ agent_id: string; agent_name: string; topics: string[] }>>([]);
   const { messages, connected, connect, disconnect, clear } = useSSE();
-  const { progress, report, setProgress, setReport, controls, setControls } = useCascadeStore();
-  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
-  const selectedProductId = controls.productId;
-  const quantity = controls.quantity;
-  const budgetEur = controls.budgetEur;
-  const desiredDeliveryDate = controls.desiredDeliveryDate;
 
-  // Load agents
+  // Load agents + pubsub data on mount
   useEffect(() => {
     api.listAgents().then(setAgents).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    api.getCatalogue()
-      .then((items) => {
-        setCatalogue(items);
-        if (items.length && !selectedProductId) {
-          setControls({ productId: items[0].product_id });
-        }
-      })
-      .catch(() => {});
+    api.getReport().then(setReport).catch(() => {});
+    api.getPubsubEvents().then(setPubsubEvents).catch(() => {});
+    api.getPubsubSummary().then((s: any) => setPubsubSubs(s.subscriptions || [])).catch(() => {});
   }, []);
 
   // Poll progress
@@ -57,25 +46,23 @@ const Coordination = () => {
           clearInterval(interval);
           api.getReport().then(setReport).catch(() => {});
           api.listAgents().then(setAgents).catch(() => {});
+          api.getPubsubEvents().then(setPubsubEvents).catch(() => {});
+          api.getPubsubSummary().then((s: any) => setPubsubSubs(s.subscriptions || [])).catch(() => {});
         }
       } catch { /* ignore */ }
     }, 1000);
     return () => clearInterval(interval);
-  }, [progress.running, setProgress, setReport]);
+  }, [progress.running]);
 
   const handleTrigger = useCallback(async () => {
     setTriggering(true);
     setReport(null);
     clear();
     try {
-      const hasProduct = Boolean(selectedProductId);
-      await api.triggerCascade({
-        intent: hasProduct ? undefined : "Buy all parts required to assemble one Ferrari 296 GTB",
-        budget_eur: budgetEur,
-        product_id: hasProduct ? selectedProductId : undefined,
-        quantity: Math.max(1, quantity),
-        desired_delivery_date: desiredDeliveryDate || undefined,
-      });
+      await api.triggerCascade(
+        "Buy all parts required to assemble one Ferrari 296 GTB",
+        500000,
+      );
       setProgress({ running: true, progress: 0 });
       connect();
     } catch (err) {
@@ -83,12 +70,10 @@ const Coordination = () => {
     } finally {
       setTriggering(false);
     }
-  }, [connect, clear, selectedProductId, budgetEur, quantity, desiredDeliveryDate, setProgress, setReport]);
+  }, [connect, clear]);
 
   // Compute which pipeline stages are done based on progress
   const completedStages = Math.floor((progress.progress / 100) * PIPELINE_STAGES.length);
-
-  const selectedProduct = catalogue.find((c) => c.product_id === selectedProductId);
 
   return (
     <AppLayout>
@@ -103,41 +88,6 @@ const Coordination = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <select
-              className="hidden md:block rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
-              value={selectedProductId}
-              onChange={(e) => setControls({ productId: e.target.value })}
-              disabled={progress.running}
-            >
-              {catalogue.map((item) => (
-                <option key={item.product_id} value={item.product_id}>
-                  {item.name}
-                </option>
-              ))}
-            </select>
-            <input
-              type="number"
-              min={1}
-              className="hidden md:block w-20 rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
-              value={quantity}
-              onChange={(e) => setControls({ quantity: Math.max(1, Number(e.target.value)) })}
-              disabled={progress.running}
-            />
-            <input
-              type="number"
-              min={1}
-              className="hidden md:block w-28 rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
-              value={budgetEur}
-              onChange={(e) => setControls({ budgetEur: Math.max(1, Number(e.target.value)) })}
-              disabled={progress.running}
-            />
-            <input
-              type="date"
-              className="hidden md:block rounded-md border border-border bg-background px-2 py-1 text-[10px] font-mono"
-              value={desiredDeliveryDate}
-              onChange={(e) => setControls({ desiredDeliveryDate: e.target.value })}
-              disabled={progress.running}
-            />
             {connected && (
               <button
                 onClick={disconnect}
@@ -170,7 +120,7 @@ const Coordination = () => {
                   {progress.running ? "Active Cascade" : report ? "Cascade Complete" : "Ready to Launch"}
                 </h2>
                 <p className="text-[10px] text-muted-foreground font-mono">
-                  Intent: {selectedProduct ? selectedProduct.name : "Ferrari 296 GTB"}
+                  Intent: "Procure V8 engine assembly components — Ferrari 296 GTB"
                 </p>
               </div>
             </div>
@@ -260,7 +210,6 @@ const Coordination = () => {
                   type={msg.type}
                   message={msg.summary}
                   color={msg.color}
-                  detail={msg.detail}
                 />
               ))}
             </div>
@@ -311,6 +260,79 @@ const Coordination = () => {
             )}
           </div>
         </div>
+        {/* Pub-Sub: Disruption Events & Subscriptions */}
+        {(pubsubEvents.length > 0 || pubsubSubs.length > 0) && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Disruption Events */}
+            <div className="lg:col-span-2 rounded-lg border border-border bg-card">
+              <div className="px-4 py-3 border-b border-border flex items-center gap-2">
+                <Rss className="w-4 h-4 text-orange-400" />
+                <h2 className="text-sm font-semibold text-foreground">Disruption Events (Pub-Sub)</h2>
+                <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                  {pubsubEvents.length} events broadcast
+                </span>
+              </div>
+              <div className="max-h-[350px] overflow-y-auto divide-y divide-border/50">
+                {pubsubEvents.map((evt, i) => {
+                  const severityColor = evt.severity === "high" ? "text-red-400" : evt.severity === "medium" ? "text-orange-400" : "text-yellow-400";
+                  const severityBg = evt.severity === "high" ? "bg-red-500/10 border-red-500/20" : evt.severity === "medium" ? "bg-orange-500/10 border-orange-500/20" : "bg-yellow-500/10 border-yellow-500/20";
+                  return (
+                    <div key={i} className="px-4 py-3 hover:bg-secondary/30 transition-colors">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold uppercase border ${severityBg} ${severityColor}`}>
+                          {evt.severity}
+                        </span>
+                        <span className="text-sm font-medium text-foreground">
+                          {evt.event_type.replace(/_/g, " ")}
+                        </span>
+                        <span className="ml-auto text-[10px] text-muted-foreground font-mono">
+                          {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : ""}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-1 mb-1">{evt.details}</p>
+                      <div className="flex items-center gap-1 ml-1">
+                        <span className="text-[10px] text-muted-foreground font-mono">Source:</span>
+                        <span className="text-[10px] text-foreground font-mono">{evt.source_agent}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono ml-2">Delivered to:</span>
+                        <span className="text-[10px] text-primary font-mono">{evt.affected_agents?.length || 0} agents</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Agent Subscriptions */}
+            <div className="rounded-lg border border-border bg-card">
+              <div className="px-4 py-3 border-b border-border">
+                <h2 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Rss className="w-4 h-4 text-primary" />
+                  Agent Subscriptions
+                </h2>
+                <p className="text-[10px] text-muted-foreground font-mono mt-0.5">
+                  {pubsubSubs.length} agents subscribed to disruption topics
+                </p>
+              </div>
+              <div className="max-h-[350px] overflow-y-auto divide-y divide-border/50">
+                {pubsubSubs.map((sub, i) => (
+                  <div key={i} className="px-4 py-3">
+                    <p className="text-sm font-medium text-foreground mb-1">{sub.agent_name}</p>
+                    <div className="flex flex-wrap gap-1">
+                      {sub.topics.map((topic) => (
+                        <span
+                          key={topic}
+                          className="px-2 py-0.5 rounded text-[10px] font-mono bg-primary/10 text-primary border border-primary/20"
+                        >
+                          {topic.replace(/_/g, " ")}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </AppLayout>
   );

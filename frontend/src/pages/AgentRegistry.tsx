@@ -12,7 +12,7 @@ const AgentRegistry = () => {
   useEffect(() => {
     api.listAgents()
       .then(setAgents)
-      .catch(() => {})
+      .catch(() => { })
       .finally(() => setLoading(false));
   }, []);
 
@@ -22,7 +22,7 @@ const AgentRegistry = () => {
         <div>
           <h1 className="text-2xl font-bold text-foreground tracking-tight">Agent Registry</h1>
           <p className="text-sm text-muted-foreground font-mono mt-1">
-            NANDA-native agent discovery layer — AgentFacts metadata & capabilities
+            Agent discovery layer — AgentFacts metadata & capabilities
           </p>
         </div>
 
