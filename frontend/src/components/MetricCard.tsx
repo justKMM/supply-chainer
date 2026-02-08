@@ -1,20 +1,35 @@
-import React from 'react';
-import type { HeroMetric } from '../types';
+import { ReactNode } from "react";
 
-export const MetricCard: React.FC<HeroMetric> = ({ value, label, trend }) => {
+interface MetricCardProps {
+  label: string;
+  value: string | number;
+  icon: ReactNode;
+  trend?: string;
+  variant?: "default" | "primary" | "accent" | "success";
+}
+
+const variantStyles = {
+  default: "border-border",
+  primary: "border-primary/20 glow-border",
+  accent: "border-accent/20",
+  success: "border-success/20",
+};
+
+export function MetricCard({ label, value, icon, trend, variant = "default" }: MetricCardProps) {
   return (
-    <div className="p-[18px] text-center transition-all duration-300 border rounded-xl bg-bg-card border-border hover:bg-bg-card-hover">
-      <div className="text-[26px] font-extrabold text-transparent bg-gradient-to-br from-white to-[#ccc] bg-clip-text">
-        {value}
+    <div className={`rounded-lg border bg-card p-4 ${variantStyles[variant]}`}>
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-xs text-muted-foreground font-mono uppercase tracking-wider">
+          {label}
+        </span>
+        <div className="text-muted-foreground">{icon}</div>
       </div>
-      <div className="text-[11px] text-text-secondary mt-1.5 uppercase tracking-widest">
-        {label}
-      </div>
+      <div className="text-2xl font-bold text-foreground font-mono">{value}</div>
       {trend && (
-        <div className="text-[11px] mt-1 text-accent-green">
-          ↑ {trend}
-        </div>
+        <p className="text-xs text-success mt-1 font-mono">
+          {trend}
+        </p>
       )}
     </div>
   );
-};
+}
