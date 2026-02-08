@@ -10,6 +10,7 @@ export interface GraphNode {
   role: string;
   color: string;
   trust_score?: number;
+  risk_score?: number;
   size?: number;
 }
 
@@ -19,6 +20,7 @@ export interface GraphEdge {
   type: string;
   label: string;
   value_eur?: number;
+  risk_level?: number;
 }
 
 export interface LiveMessage {
@@ -31,6 +33,8 @@ export interface LiveMessage {
   type: string;
   summary: string;
   detail: string;
+  color?: string;
+  icon?: string;
 }
 
 export interface CostItem {
@@ -154,6 +158,79 @@ export interface ReasoningItem {
   thought: string;
 }
 
+export interface CatalogueProduct {
+  product_id: string;
+  name: string;
+  description?: string;
+  selling_price_eur: number;
+  intent_template?: string;
+  currency?: string;
+}
+
+export interface ProfitSummary {
+  total_revenue_eur: number;
+  total_cost_eur: number;
+  total_profit_eur: number;
+  profit_per_item_eur: number;
+  quantity: number;
+  margin_pct: number;
+}
+
+export interface PolicySpec {
+  jurisdiction: string;
+  max_risk_score: number;
+  min_trust_score: number;
+  min_esg_score: number;
+  forbid_single_supplier: boolean;
+}
+
+export interface PolicyEvaluation {
+  compliant: boolean;
+  violations: Record<string, unknown>[];
+  explanations: string[];
+}
+
+export interface IntentExpansion {
+  root_intent: string;
+  component_intents: string[];
+  logistics_intents: string[];
+  compliance_intents: string[];
+}
+
+export interface EventLogEntry {
+  type: string;
+  stage: string;
+  impact: Record<string, number>;
+}
+
+export interface TrustSubmission {
+  agent_id: string;
+  dimension: string;
+  score: number;
+  context?: string;
+  rater_id?: string;
+}
+
+export interface TrustSummary {
+  agent_id: string;
+  dimension: string;
+  score: number;
+  submissions: number;
+}
+
+export interface SupplierSummary {
+  agent_id: string;
+  name: string;
+  role: string;
+  status?: string;
+  location?: {
+    headquarters?: { city?: string; country?: string };
+  };
+  trust?: {
+    trust_score?: number;
+  };
+}
+
 export interface ReportData {
   dashboard: {
     hero_metrics: HeroMetric[];
@@ -177,6 +254,10 @@ export interface ReportData {
   pubsub_summary: PubSubSummary;
   reputation_summary: ReputationSummary;
   reasoning_log: ReasoningItem[];
+  profit_summary?: ProfitSummary | null;
+  policy_evaluation?: PolicyEvaluation | null;
+  intent_expansion?: IntentExpansion | null;
+  event_log?: EventLogEntry[];
   execution_plan?: {
     risk_assessment?: {
       overall_risk: string;

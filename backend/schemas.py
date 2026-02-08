@@ -242,6 +242,7 @@ class TriggerRequest(BaseModel):
     product_id: str | None = None
     quantity: int = 1
     strategy: str = "cost-first"
+    desired_delivery_date: str | None = None
 
 
 # ── Frontend Data Shapes ────────────────────────────────────────────────────

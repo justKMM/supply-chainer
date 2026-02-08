@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import type { ReportData } from './types';
+import type { CatalogueProduct, ReportData, SupplierSummary } from './types';
 import { Header } from './components/Header';
 import { ProgressBar } from './components/ProgressBar';
 import { Dashboard } from './components/Dashboard';
 import { useSSE } from './hooks/useSSE';
-import { triggerCascadeRequest, fetchProgress, fetchReport } from './api';
+import { triggerCascadeRequest, fetchProgress, fetchReport, fetchCatalogue, fetchSuppliers } from './api';
 
 const STAGES = [
   [0, 'Initializing agent network & event subscriptions...'],
@@ -26,6 +26,18 @@ function App() {
   const [progress, setProgress] = useState(0);
   const [progressLabel, setProgressLabel] = useState('Initializing...');
   const [reportData, setReportData] = useState<ReportData | null>(null);
+  const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [quantity, setQuantity] = useState(1);
+  const [catalogueError, setCatalogueError] = useState<string | null>(null);
+  const [suppliers, setSuppliers] = useState<SupplierSummary[]>([]);
+  const [suppliersError, setSuppliersError] = useState<string | null>(null);
+  const [budgetEur, setBudgetEur] = useState(500000);
+  const [desiredDeliveryDate, setDesiredDeliveryDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 21);
+    return d.toISOString().slice(0, 10);
+  });
   
   const { messages, clearMessages } = useSSE(isRunning);
   const pollInterval = useRef<number | undefined>(undefined);
@@ -37,7 +49,14 @@ function App() {
     clearMessages();
     
     try {
-      await triggerCascadeRequest();
+      const hasProduct = Boolean(selectedProductId);
+      await triggerCascadeRequest({
+        intent: hasProduct ? undefined : 'Buy all parts required to assemble one Ferrari 296 GTB',
+        budget_eur: budgetEur,
+        product_id: hasProduct ? selectedProductId : undefined,
+        quantity: quantity > 0 ? quantity : 1,
+        desired_delivery_date: desiredDeliveryDate || undefined,
+      });
       startPolling();
     } catch (e) {
       console.error('Trigger failed:', e);
@@ -93,9 +112,51 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const loadCatalogue = async () => {
+      try {
+        const items = await fetchCatalogue();
+        setCatalogue(items);
+        if (items.length && !selectedProductId) {
+          setSelectedProductId(items[0].product_id);
+        }
+      } catch (e) {
+        console.error('Failed to load catalogue', e);
+        setCatalogueError('Catalogue unavailable');
+      }
+    };
+    loadCatalogue();
+  }, []);
+
+  useEffect(() => {
+    const loadSuppliers = async () => {
+      try {
+        const data = await fetchSuppliers();
+        setSuppliers(data);
+      } catch (e) {
+        console.error('Failed to load suppliers', e);
+        setSuppliersError('Suppliers unavailable');
+      }
+    };
+    loadSuppliers();
+  }, []);
+
   return (
     <>
-      <Header onTrigger={handleTrigger} isRunning={isRunning} />
+      <Header
+        onTrigger={handleTrigger}
+        isRunning={isRunning}
+        catalogue={catalogue}
+        selectedProductId={selectedProductId}
+        onSelectProduct={setSelectedProductId}
+        quantity={quantity}
+        onChangeQuantity={setQuantity}
+        budgetEur={budgetEur}
+        onChangeBudget={setBudgetEur}
+        desiredDeliveryDate={desiredDeliveryDate}
+        onChangeDesiredDeliveryDate={setDesiredDeliveryDate}
+        catalogueError={catalogueError}
+      />
       
       {(isRunning || progress > 0) && (
         <ProgressBar progress={progress} label={progressLabel} />
@@ -119,7 +180,9 @@ function App() {
            <Dashboard 
              data={(reportData || {}) as ReportData} 
              messages={messages} 
-             messageCount={messages.length} 
+             messageCount={messages.length}
+             suppliers={suppliers}
+             suppliersError={suppliersError}
            />
         </div>
       )}

@@ -112,9 +112,22 @@ async def trigger_cascade(req: TriggerRequest):
 
     prepare_new_cascade()
     asyncio.create_task(
-        run_cascade(intent, budget_eur, catalogue_product=product, quantity=quantity, strategy=req.strategy)
+        run_cascade(
+            intent,
+            budget_eur,
+            catalogue_product=product,
+            quantity=quantity,
+            strategy=req.strategy,
+            desired_delivery_date=req.desired_delivery_date,
+        )
     )
-    return {"status": "started", "intent": intent, "product_id": req.product_id, "quantity": quantity}
+    return {
+        "status": "started",
+        "intent": intent,
+        "product_id": req.product_id,
+        "quantity": quantity,
+        "desired_delivery_date": req.desired_delivery_date,
+    }
 
 
 class SimulateSupplierFailureRequest(BaseModel):

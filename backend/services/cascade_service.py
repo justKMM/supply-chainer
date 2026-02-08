@@ -140,11 +140,27 @@ async def run_cascade(
     catalogue_product=None,
     quantity: int = 1,
     strategy: str = "cost-first",
+    desired_delivery_date: str | None = None,
 ) -> dict:
     """Modular orchestrator for the full procurement cascade."""
     cascade_state["running"] = True
     cascade_state["progress"] = 0
     cascade_state["report"] = None
+
+    def _desired_days(date_str: str | None) -> int | None:
+        if not date_str:
+            return None
+        try:
+            target = datetime.fromisoformat(date_str).date()
+        except ValueError:
+            try:
+                target = datetime.fromisoformat(date_str + "T00:00:00").date()
+            except ValueError:
+                return None
+        today = datetime.utcnow().date()
+        return max(0, (target - today).days)
+
+    desired_delivery_days = _desired_days(desired_delivery_date)
 
     report = {
         "report_id": make_id("NCR-FERRARI"),
@@ -171,6 +187,10 @@ async def run_cascade(
         "policy_evaluation": None,
         "intent_expansion": None,
         "event_log": [],
+        "delivery_target": {
+            "requested_date": desired_delivery_date,
+            "requested_days": desired_delivery_days,
+        },
     }
 
     try:
@@ -183,7 +203,7 @@ async def run_cascade(
         qualified_agents, _ = await run_discovery(bom, report, _emit, _ts)
         cascade_state["progress"] = 30
 
-        quotes = await run_quotes(qualified_agents, report, _emit, _ts)
+        quotes = await run_quotes(qualified_agents, report, _emit, _ts, budget_eur)
         cascade_state["progress"] = 45
 
         pre_events = trigger_events("pre_quotes")
@@ -213,7 +233,12 @@ async def run_cascade(
         await run_compliance(final_orders, report, _emit)
         cascade_state["progress"] = 72
 
-        total_component_cost, po_count = await run_orders(final_orders, _emit)
+        budget_per_item_eur = round(budget_eur / quantity, 2) if quantity > 0 else None
+        for order in final_orders.values():
+            order["budget_per_item_eur"] = budget_per_item_eur
+            order["desired_delivery_days"] = desired_delivery_days
+
+        total_component_cost, po_count = await run_orders(final_orders, _emit, desired_delivery_days)
         cascade_state["progress"] = 82
 
         logistics_plan, max_lead_days = run_logistics(final_orders, _emit)

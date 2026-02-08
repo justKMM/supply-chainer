@@ -6,7 +6,7 @@ import asyncio
 from datetime import datetime, timedelta
 
 
-async def run_orders(final_orders: dict, emit) -> tuple[float, int]:
+async def run_orders(final_orders: dict, emit, desired_delivery_days: int | None) -> tuple[float, int]:
     total_component_cost = 0
     po_count = 0
     ship_date_base = datetime.utcnow() + timedelta(days=2)
@@ -51,12 +51,14 @@ async def run_orders(final_orders: dict, emit) -> tuple[float, int]:
                 "ship_date": ship_date.strftime("%b %d"),
                 "delivery_date": delivery_date.strftime("%b %d"),
                 "po_number": po_number,
+                "requested_delivery_days": desired_delivery_days,
             },
         )
 
         order["po_number"] = po_number
         order["ship_date"] = ship_date.isoformat()
         order["delivery_date"] = delivery_date.isoformat()
+        order["desired_delivery_days"] = desired_delivery_days
         po_count += 1
         await asyncio.sleep(0.1)
 

@@ -171,10 +171,13 @@ class ReputationLedger:
         attestations.append(att)
         prev_hash = att.hash
 
-        # Quality attestation
-        quality_score = 1.0 if record.quality_accepted and record.defects_found == 0 else (
-            0.8 if record.quality_accepted else 0.3
-        )
+        # Quality attestation (Ferrari quality bar: defects penalized heavily)
+        if record.quality_accepted and record.defects_found == 0:
+            quality_score = 1.0
+        elif record.quality_accepted:
+            quality_score = max(0.2, 0.6 - record.defects_found * 0.15)
+        else:
+            quality_score = 0.05
         att = Attestation(
             agent_id=record.agent_id,
             agent_name=record.agent_name,
@@ -461,10 +464,14 @@ def record_transactions(final_orders: dict, emit) -> dict:
         agent = order["agent"]
         product = order["product"]
         # Simulate realistic transaction outcomes
-        on_time = random.random() > 0.15  # 85% on-time
-        actual_days = product.lead_time_days + (0 if on_time else random.randint(1, 5))
+        desired_days = order.get("desired_delivery_days")
+        base_days = product.lead_time_days
+        slip_days = 0 if random.random() > 0.15 else random.randint(1, 5)
+        actual_days = base_days + slip_days
+        promised_days = desired_days if isinstance(desired_days, int) else base_days
+        on_time = actual_days <= promised_days
         defects = 0 if random.random() > 0.1 else random.randint(1, 3)
-        price_honored = random.random() > 0.05
+        price_honored = order["final_price"] <= order["initial_price"] * 1.02
 
         record = TransactionRecord(
             agent_id=agent.agent_id,
@@ -473,7 +480,7 @@ def record_transactions(final_orders: dict, emit) -> dict:
             counterparty_name="Ferrari Procurement AI",
             transaction_type="delivery_completed",
             po_number=order.get("po_number", ""),
-            promised_delivery_days=product.lead_time_days,
+            promised_delivery_days=promised_days,
             actual_delivery_days=actual_days,
             on_time=on_time,
             quoted_price_eur=order["initial_price"],

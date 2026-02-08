@@ -1,4 +1,4 @@
-import type { ReportData, LiveMessage } from '../types';
+import type { ReportData, LiveMessage, SupplierSummary } from '../types';
 import { MetricsGrid } from './MetricsGrid';
 import { NetworkGraph } from './NetworkGraph';
 import { Feed } from './Feed';
@@ -13,14 +13,27 @@ import { Intelligence } from './Intelligence';
 import { PubSub } from './PubSub';
 import { Reputation } from './Reputation';
 import { Reasoning } from './Reasoning';
+import { ProfitSummary } from './ProfitSummary';
+import { PolicyEvaluation } from './PolicyEvaluation';
+import { IntentExpansion } from './IntentExpansion';
+import { EventLog } from './EventLog';
+import { Suppliers } from './Suppliers';
 
 interface DashboardProps {
   data: ReportData;
   messages: LiveMessage[];
   messageCount: number;
+  suppliers: SupplierSummary[];
+  suppliersError?: string | null;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ data, messages, messageCount }) => {
+export const Dashboard: React.FC<DashboardProps> = ({
+  data,
+  messages,
+  messageCount,
+  suppliers,
+  suppliersError,
+}) => {
   const nodeCount = data.graph_nodes?.length || 0;
   const edgeCount = data.graph_edges?.length || 0;
   const intelCount = data.intelligence_feed?.length || 0;
@@ -28,6 +41,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, messages, messageCou
   const repCount = data.reputation_summary?.total_agents_scored || 0;
   const reasoningCount = data.reasoning_log?.length || 0;
   const overallRisk = data.execution_plan?.risk_assessment?.overall_risk || 'medium';
+  const eventCount = data.event_log?.length || 0;
 
   const getRiskBadgeStyles = (risk: string) => {
     switch (risk) {
@@ -43,6 +57,28 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, messages, messageCou
       <div className="mb-7">
         <div className="section-title"><span className="dot"></span> Key Metrics</div>
         <MetricsGrid metrics={data.dashboard?.hero_metrics || []} />
+      </div>
+
+      {/* Row 0: Profit + Policy + Intent */}
+      <div className="grid grid-cols-1 gap-5 mb-7 md:grid-cols-3">
+        <div className="card">
+          <div className="card-header">Profit Summary</div>
+          <div className="card-body">
+            <ProfitSummary summary={data.profit_summary} />
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-header">Policy Evaluation</div>
+          <div className="card-body">
+            <PolicyEvaluation evaluation={data.policy_evaluation} />
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-header">Intent Expansion</div>
+          <div className="card-body">
+            <IntentExpansion expansion={data.intent_expansion} />
+          </div>
+        </div>
       </div>
 
       {/* Row 1: Network Graph + Live Feed */}
@@ -155,7 +191,33 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, messages, messageCou
         </div>
       </div>
 
-      {/* Row 6: Reputation Leaderboard */}
+      {/* Row 6: Event Log */}
+      <div className="mb-7">
+        <div className="card">
+          <div className="card-header">
+            <span>Dynamic Event Log</span>
+            <span className="text-[11px] text-text-muted">{eventCount} events</span>
+          </div>
+          <div className="p-0 overflow-y-auto card-body max-h-[360px]">
+            <EventLog events={data.event_log || []} />
+          </div>
+        </div>
+      </div>
+
+      {/* Row 7: Supplier Directory */}
+      <div className="mb-7">
+        <div className="card">
+          <div className="card-header">
+            <span>Supplier Directory</span>
+            <span className="text-[11px] text-text-muted">{suppliers.length} suppliers</span>
+          </div>
+          <div className="p-0 overflow-y-auto card-body max-h-[360px]">
+            <Suppliers suppliers={suppliers} error={suppliersError} />
+          </div>
+        </div>
+      </div>
+
+      {/* Row 8: Reputation Leaderboard */}
       <div className="mb-7">
         <div className="card">
           <div className="card-header">
@@ -168,7 +230,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ data, messages, messageCou
         </div>
       </div>
 
-      {/* Row 7: Agent Reasoning Log */}
+      {/* Row 9: Agent Reasoning Log */}
       <div className="mb-7">
         <div className="card">
           <div className="card-header">

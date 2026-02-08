@@ -26,7 +26,7 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ nodes, edges }) => {
                n.role === 'logistics_provider' ? 'triangle' :
                n.role === 'compliance_agent' ? 'square' :
                n.role === 'assembly_coordinator' ? 'star' : 'dot',
-        title: `${n.label}\nRole: ${n.role}\nTrust: ${n.trust_score || 'N/A'}`, 
+        title: `${n.label}\nRole: ${n.role}\nTrust: ${n.trust_score ?? 'N/A'}\nRisk: ${n.risk_score ?? 'N/A'}`, 
       }))
     );
 
@@ -44,7 +44,7 @@ export const NetworkGraph: React.FC<NetworkGraphProps> = ({ nodes, edges }) => {
         font: { color: '#666', size: 9, face: 'Inter' },
         arrows: 'to',
         smooth: { enabled: true, type: 'curvedCW', roundness: 0.2 },
-        title: `${e.type}: ${e.label}\n${e.value_eur ? 'EUR ' + e.value_eur.toLocaleString() : ''}`,
+        title: `${e.type}: ${e.label}\n${e.value_eur ? 'EUR ' + e.value_eur.toLocaleString() : ''}${e.risk_level ? `\nRisk: ${e.risk_level}` : ''}`,
       }))
     );
     
