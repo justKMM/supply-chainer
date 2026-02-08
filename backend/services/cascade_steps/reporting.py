@@ -88,6 +88,18 @@ def run_reporting(
             "margin_pct": round(margin_pct, 2),
         }
 
+    report["component_costs"] = [
+        {
+            "supplier_id": order["agent"].agent_id,
+            "supplier_name": order["agent"].name,
+            "product_name": order["product"].name,
+            "quantity": order["quantity"],
+            "unit_price_eur": round(order["final_price"], 2),
+            "total_eur": round(order["final_price"] * order["quantity"], 2),
+        }
+        for order in final_orders.values()
+    ]
+
     color_map = {
         "procurement_agent": "#DC143C",
         "tier_1_supplier": "#2196F3",

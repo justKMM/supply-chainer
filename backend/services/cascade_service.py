@@ -312,6 +312,11 @@ async def run_cascade(
     cascade_state["running"] = False
     cascade_state["progress"] = 100
     cascade_state["report"] = report
+    try:
+        from backend.services.cascade_history import add_report
+        add_report(report)
+    except Exception:
+        pass
     return report
 
 
