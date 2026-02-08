@@ -33,10 +33,9 @@ from backend.controllers.catalogue_controller import router as catalogue_router
 from backend.controllers.policy_controller import router as policy_router
 from backend.controllers.escalation_controller import router as escalation_router
 from backend.controllers.agent_protocol_controller import router as agent_protocol_router
+from backend.controllers.cascade_history_controller import router as cascade_history_router
 from backend.controllers.mcp_controller import router as mcp_router
 from backend.controllers.a2a_controller import router as a2a_router
-from backend.services.agent_service import create_seed_agents
-from backend.services.registry_service import registry
 
 app = FastAPI(title="Ferrari Supply Chain Agents", version="1.0.0")
 
@@ -48,21 +47,6 @@ app.add_middleware(
 )
 
 
-# ── Startup: Seed agents into registry ────────────────────────────────────
-
-"""
-@app.on_event("startup")
-async def startup_seed_agents():
-    # Register all seed agents (core, suppliers, MCP, A2A, etc.) on startup.
-    agents = create_seed_agents()
-    for agent in agents:
-        registry.register(agent)
-    print(f"✓ Seeded {len(agents)} agents into registry on startup")
-"""
-
-# ── Routers ───────────────────────────────────────────────────────────────
-
-
 app.include_router(registry_router)
 app.include_router(catalogue_router)
 app.include_router(policy_router)
@@ -71,5 +55,25 @@ app.include_router(pubsub_router)
 app.include_router(reputation_router)
 app.include_router(stream_router)
 app.include_router(agent_protocol_router)
+app.include_router(cascade_history_router)
 app.include_router(mcp_router)
 app.include_router(a2a_router)
+
+if os.environ.get("SERVE_FRONTEND", "").lower() in ("1", "true", "yes"):
+    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+    if frontend_dist.exists():
+        app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="static-assets")
+
+        @app.get("/", response_class=HTMLResponse)
+        async def serve_frontend_root():
+            index_path = frontend_dist / "index.html"
+            if index_path.exists():
+                return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+            return HTMLResponse(content="<h1>Frontend not built</h1>", status_code=404)
+
+        @app.get("/{full_path:path}", response_class=HTMLResponse)
+        async def serve_frontend(full_path: str):
+            index_path = frontend_dist / "index.html"
+            if index_path.exists():
+                return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+            return HTMLResponse(content="<h1>Frontend not built</h1>", status_code=404)
