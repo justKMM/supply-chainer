@@ -16,10 +16,15 @@ from backend.config import BUDGET_CEILING_EUR, TRUST_THRESHOLD, MIN_ESG_SCORE
 from backend.schemas import LiveMessage, make_id
 from backend.services.registry_service import registry
 from backend.services.agent_service import ai_reason, ai_decompose_bom, create_seed_agents, CATEGORY_AGENT_MAP
+from backend.services.intent_resolver_service import intent_resolver
+from backend.services.memory_service import memory_service
+from backend.services.risk_propagation_service import risk_propagation
 from backend.services.pubsub_service import event_bus
 from backend.services.trust_service import reputation_ledger, record_transactions
 from backend.services.intelligence_service import generate_intelligence_signals
 from backend.services.logistics_service import plan_logistics
+from backend.services.negotiation_strategies import get_strategy, apply_strategy
+from backend.services.policy_service import policy_service
 
 
 # ── State ────────────────────────────────────────────────────────────────────
@@ -28,14 +33,52 @@ cascade_state = {
     "running": False,
     "report": None,
     "progress": 0,
+    "paused": False,
+    "escalation": None,
+    "escalation_event": None,
+    "escalation_response": None,
 }
 
 
+def _emit_escalation(reason: str, agent_id: str | None, trust_score: float | None, risk_score: float | None, _emit) -> str:
+    """Emit escalation event; return escalation_id."""
+    from backend.schemas import make_id
+    esc_id = make_id("esc")
+    cascade_state["paused"] = True
+    cascade_state["escalation"] = {
+        "escalation_id": esc_id,
+        "reason": reason,
+        "agent_id": agent_id,
+        "trust_score": trust_score,
+        "risk_score": risk_score,
+        "threshold": TRUST_THRESHOLD,
+    }
+    cascade_state["escalation_event"] = asyncio.Event()
+    _emit("escalation", "Escalation", "ferrari-procurement-01", "Ferrari Procurement", "escalation", reason, f"Trust/risk threshold exceeded. Awaiting human response.", "#FF9800", "warning")
+    return esc_id
+
+
+def respond_to_escalation(escalation_id: str, action: str) -> bool:
+    """Human responds to escalation; unblock cascade if applicable."""
+    if cascade_state.get("escalation", {}).get("escalation_id") != escalation_id:
+        return False
+    cascade_state["escalation_response"] = action
+    ev = cascade_state.get("escalation_event")
+    if ev:
+        ev.set()
+    cascade_state["paused"] = False
+    return True
+
+
 def prepare_new_cascade():
-    """Clear all stateful services before a new cascade."""
+    """Clear all stateful services and escalation state before a new cascade."""
     registry.clear()
     event_bus.clear()
     reputation_ledger.clear()
+    risk_propagation.clear()
+    cascade_state["paused"] = False
+    cascade_state["escalation"] = None
+    cascade_state["escalation_response"] = None
 
 
 def _ts(offset_seconds: int = 0) -> str:
@@ -72,7 +115,13 @@ def _emit(
 
 # ── Main Cascade ─────────────────────────────────────────────────────────────
 
-async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> dict:
+async def run_cascade(
+    intent: str,
+    budget_eur: float = BUDGET_CEILING_EUR,
+    catalogue_product=None,
+    quantity: int = 1,
+    strategy: str = "cost-first",
+) -> dict:
     """Execute the full procurement cascade and return a Network Coordination Report."""
     cascade_state["running"] = True
     cascade_state["progress"] = 0
@@ -129,6 +178,9 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
         "pubsub_summary": {},
         "reputation_summary": {},
         "intelligence_feed": [],
+        "profit_summary": None,
+        "policy_evaluation": None,
+        "intent_expansion": None,
     }
 
     try:
@@ -188,17 +240,31 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
         await asyncio.sleep(0.3)
         cascade_state["progress"] = 5
 
-        # ── Step 1: Decompose Intent into BOM ────────────────────────────
+        # ── Step 1: Intent Expansion + Decompose Intent into BOM ─────────
         _emit(
             "ferrari-procurement-01",
             "Ferrari Procurement",
             "system",
             "System",
-            "intent_decomposition",
-            f"Decomposing intent: {intent}",
-            "Using AI to identify required component categories",
+            "intent_expansion",
+            f"Expanding intent: {intent[:80]}...",
+            "Intent Resolver: component, logistics, compliance sub-intents",
             "#DC143C",
             "brain",
+        )
+
+        intent_expansion, bom = await intent_resolver.expand_and_decompose(intent)
+        report["intent_expansion"] = intent_expansion
+        _emit(
+            "intent-resolver",
+            "Intent Resolver",
+            "ferrari-procurement-01",
+            "Ferrari Procurement",
+            "intent_expansion",
+            f"Expanded: {len(intent_expansion.get('component_intents', []))} component, {len(intent_expansion.get('logistics_intents', []))} logistics, {len(intent_expansion.get('compliance_intents', []))} compliance",
+            str(intent_expansion),
+            "#DC143C",
+            "branch",
         )
 
         reasoning = await ai_reason(
@@ -208,7 +274,6 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
         )
         report["reasoning_log"].append({"agent": "Ferrari Procurement", "timestamp": _ts(), "thought": reasoning})
 
-        bom = await ai_decompose_bom(intent)
         total_parts = sum(c["parts_count"] for c in bom)
         report["bill_of_materials_summary"] = {
             "total_component_categories": len(bom),
@@ -382,6 +447,7 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
         cascade_state["progress"] = 45
 
         # ── Step 4: Negotiation ──────────────────────────────────────────
+        neg_strategy = get_strategy(strategy)
         final_orders = {}
         for cat, quote in quotes.items():
             agent = quote["agent"]
@@ -393,14 +459,22 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
                 final_orders[cat] = {**quote, "final_price": initial_price, "discount_pct": 0}
                 continue
 
-            # Round 1: Counter offer
-            discount_ask = random.uniform(3.0, 7.0)
-            offer_price = round(initial_price * (1 - discount_ask / 100), 2)
+            agent_trust = agent.trust.trust_score if agent.trust else None
+            offer_price, counter_price, final_price, rounds = apply_strategy(
+                neg_strategy, initial_price, agent_trust
+            )
+            final_discount = round((1 - final_price / initial_price) * 100, 2)
+            discount_ask = round((1 - offer_price / initial_price) * 100, 2)
+            supplier_discount = round((1 - counter_price / initial_price) * 100, 2)
+
+            # Economic memory: behavioral signal influences negotiation
+            behavioral = memory_service.get_behavioral_signal(agent.agent_id)
+            memory_context = f" Past signal: {behavioral}. " if behavioral else " "
 
             reasoning = await ai_reason(
                 "Ferrari Procurement AI",
                 "procurement_agent",
-                f"{agent.name} quoted EUR {initial_price} for {product.name}. You want to negotiate. Your counter offer is EUR {offer_price} ({discount_ask:.1f}% discount). Explain your reasoning.",
+                f"{agent.name} quoted EUR {initial_price} for {product.name}.{memory_context}Strategy: {strategy}. Counter offer EUR {offer_price} ({discount_ask:.1f}% discount).",
             )
             report["reasoning_log"].append({"agent": "Ferrari Procurement", "timestamp": _ts(), "thought": reasoning})
 
@@ -411,45 +485,36 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
                 agent.name,
                 "negotiate",
                 f"Counter offer: EUR {offer_price:,.0f}/unit ({discount_ask:.1f}% discount)",
-                "Volume commitment justifies discount",
+                f"Strategy: {strategy}",
                 "#FF9800",
                 "negotiate",
             )
 
-            # Round 2: Supplier counter
-            supplier_discount = random.uniform(1.0, discount_ask * 0.6)
-            counter_price = round(initial_price * (1 - supplier_discount / 100), 2)
-
-            reasoning = await ai_reason(
-                agent.name,
-                agent.role,
-                f"Ferrari counter-offered EUR {offer_price} (you quoted EUR {initial_price}). Your floor price allows {supplier_discount:.1f}% discount. Counter at EUR {counter_price}.",
-            )
-            report["reasoning_log"].append({"agent": agent.name, "timestamp": _ts(), "thought": reasoning})
-
-            _emit(
-                agent.agent_id,
-                agent.name,
-                "ferrari-procurement-01",
-                "Ferrari Procurement",
-                "negotiate_response",
-                f"Counter: EUR {counter_price:,.0f}/unit ({supplier_discount:.1f}% off list)",
-                "Material costs limit flexibility",
-                "#FF9800",
-                "negotiate",
-            )
-
-            # Round 3: Split difference and accept
-            final_price = round((offer_price + counter_price) / 2, 2)
-            final_discount = round((1 - final_price / initial_price) * 100, 2)
+            if rounds >= 2:
+                reasoning = await ai_reason(
+                    agent.name,
+                    agent.role,
+                    f"Ferrari counter-offered EUR {offer_price}. Your floor allows ~{supplier_discount:.1f}% discount. Counter at EUR {counter_price}.",
+                )
+                report["reasoning_log"].append({"agent": agent.name, "timestamp": _ts(), "thought": reasoning})
+                _emit(
+                    agent.agent_id,
+                    agent.name,
+                    "ferrari-procurement-01",
+                    "Ferrari Procurement",
+                    "negotiate_response",
+                    f"Counter: EUR {counter_price:,.0f}/unit ({supplier_discount:.1f}% off list)",
+                    "Material costs limit flexibility",
+                    "#FF9800",
+                    "negotiate",
+                )
 
             reasoning = await ai_reason(
                 "Ferrari Procurement AI",
                 "procurement_agent",
-                f"Split the difference between EUR {offer_price} and EUR {counter_price} = EUR {final_price}. Within budget. Accept?",
+                f"Agreed at EUR {final_price}. Within budget. Accept.",
             )
             report["reasoning_log"].append({"agent": "Ferrari Procurement", "timestamp": _ts(), "thought": reasoning})
-
             _emit(
                 "ferrari-procurement-01",
                 "Ferrari Procurement",
@@ -463,34 +528,18 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
             )
 
             negotiation_log = [
-                {
-                    "round": 1,
-                    "from": "ferrari-procurement-01",
-                    "action": "counter_offer",
-                    "value_eur": offer_price,
-                    "reasoning": f"Volume commitment warrants {discount_ask:.1f}% discount",
-                },
-                {
-                    "round": 2,
-                    "from": agent.agent_id,
-                    "action": "counter_offer",
-                    "value_eur": counter_price,
-                    "reasoning": f"Material costs limit discount to {supplier_discount:.1f}%",
-                },
-                {
-                    "round": 3,
-                    "from": "ferrari-procurement-01",
-                    "action": "accept",
-                    "value_eur": final_price,
-                    "reasoning": "Split difference, within budget ceiling",
-                },
+                {"round": 1, "from": "ferrari-procurement-01", "action": "counter_offer", "value_eur": offer_price, "reasoning": f"Strategy {strategy}"},
             ]
+            if rounds >= 2:
+                negotiation_log.append({"round": 2, "from": agent.agent_id, "action": "counter_offer", "value_eur": counter_price, "reasoning": "Supplier counter"})
+            negotiation_log.append({"round": len(negotiation_log) + 1, "from": "ferrari-procurement-01", "action": "accept", "value_eur": final_price, "reasoning": "Accepted"})
+
             report["negotiations"].append(
                 {
                     "with_agent": agent.agent_id,
                     "with_name": agent.name,
                     "product": product.name,
-                    "rounds": 3,
+                    "rounds": rounds,
                     "initial_ask_eur": initial_price,
                     "initial_offer_eur": offer_price,
                     "final_agreed_eur": final_price,
@@ -801,6 +850,46 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
             },
         }
 
+        # Policy evaluation
+        plan_for_policy = {
+            "qualified_agents": qualified_agents,
+            "discovery_results": report["discovery_results"],
+            "execution_plan": report["execution_plan"],
+        }
+        policy_result = policy_service.evaluate_policy(plan_for_policy)
+        report["policy_evaluation"] = {
+            "compliant": policy_result.compliant,
+            "violations": policy_result.violations,
+            "explanations": policy_result.explanations,
+        }
+        if not policy_result.compliant:
+            _emit(
+                "policy-agent",
+                "Policy Agent",
+                "ferrari-procurement-01",
+                "Ferrari Procurement",
+                "policy_violation",
+                f"Policy violations: {len(policy_result.violations)}",
+                "; ".join(policy_result.explanations[:3]),
+                "#FF9800",
+                "shield",
+            )
+
+        # Profit summary (when triggered via product selection)
+        if catalogue_product and quantity > 0:
+            total_cost_eur = report["execution_plan"]["total_cost_eur"]
+            total_revenue_eur = catalogue_product.selling_price_eur * quantity
+            total_profit_eur = total_revenue_eur - total_cost_eur
+            margin_pct = (total_profit_eur / total_revenue_eur * 100) if total_revenue_eur > 0 else 0.0
+            report["profit_summary"] = {
+                "total_revenue_eur": round(total_revenue_eur, 2),
+                "total_cost_eur": round(total_cost_eur, 2),
+                "total_profit_eur": round(total_profit_eur, 2),
+                "profit_per_item_eur": round(total_profit_eur / quantity, 2),
+                "quantity": quantity,
+                "margin_pct": round(margin_pct, 2),
+            }
+
         # Build graph data
         color_map = {
             "procurement_agent": "#DC143C",
@@ -949,6 +1038,37 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
             }
         )
 
+        # Risk propagation: inject logistics risk, propagate through graph
+        risk_propagation.report_risk("brembo-brake-supplier-01", "production_halt", 0.6)
+        risk_propagation.report_risk("dhl-logistics-01", "port_delay", 0.3)
+        node_risks, edge_risks = risk_propagation.propagate_risk(nodes, edges)
+        RISK_ESCALATION_THRESHOLD = 0.6
+        for n in nodes:
+            n["risk_score"] = round(node_risks.get(n["id"], 0), 2)
+        high_risk_node = next((n for n in nodes if n.get("risk_score", 0) >= RISK_ESCALATION_THRESHOLD), None)
+        if high_risk_node:
+            esc_id = _emit_escalation(f"Risk {high_risk_node['risk_score']} exceeds threshold for {high_risk_node['label']}", high_risk_node["id"], None, high_risk_node["risk_score"], _emit)
+            report.setdefault("escalations", []).append({"escalation_id": esc_id, "reason": "risk_threshold", "agent_id": high_risk_node["id"], "risk_score": high_risk_node["risk_score"]})
+            try:
+                await asyncio.wait_for(cascade_state["escalation_event"].wait(), timeout=60.0)
+                resp = cascade_state.get("escalation_response", "proceed")
+                report.setdefault("escalation_responses", []).append({"escalation_id": esc_id, "action": resp})
+                if resp == "reject":
+                    report["status"] = "escalation_rejected"
+                    cascade_state["running"] = False
+                    cascade_state["report"] = report
+                    return report
+            except asyncio.TimeoutError:
+                report.setdefault("escalation_responses", []).append({"escalation_id": esc_id, "action": "timeout_default_reject"})
+                report["status"] = "escalation_timeout"
+                cascade_state["running"] = False
+                cascade_state["report"] = report
+                return report
+        for e in edges:
+            src, tgt = e.get("from") or e.get("source"), e.get("to") or e.get("target")
+            key = f"{src}->{tgt}"
+            e["risk_level"] = round(edge_risks.get(key, 0), 2)
+
         report["graph_nodes"] = nodes
         report["graph_edges"] = edges
 
@@ -1068,7 +1188,80 @@ async def run_cascade(intent: str, budget_eur: float = BUDGET_CEILING_EUR) -> di
         report["error"] = str(e)
         _emit("system", "System", "system", "System", "error", f"Cascade error: {str(e)}", "", "#F44336", "error")
 
+    cascade_state["paused"] = False
+    cascade_state["escalation"] = None
     cascade_state["running"] = False
     cascade_state["progress"] = 100
     cascade_state["report"] = report
     return report
+
+
+def simulate_supplier_failure(agent_id: str) -> dict | None:
+    """Simulate 'what if supplier fails?' — returns cost/delay delta and alternate supplier."""
+    report = cascade_state.get("report")
+    if not report or report.get("status") != "completed":
+        return None
+
+    paths = report.get("discovery_results", {}).get("discovery_paths", [])
+    failed_path = next((p for p in paths if p.get("selected") == agent_id), None)
+    if not failed_path:
+        return {"error": "Agent not in current plan", "agent_id": agent_id}
+
+    need = failed_path.get("need", "")
+    query = failed_path.get("query", "role=tier_1_supplier")
+    cat = need.split()[0].lower() if need else ""
+    if "capability=" in query:
+        cat = query.split("capability=")[-1].split(",")[0].strip()
+
+    candidates = registry.search(role="tier_1_supplier", capability=cat or "braking_system", min_trust=0.0, include_deprecated=True)
+    candidates = [c for c in candidates if c.agent_id != agent_id]
+
+    if not candidates:
+        return {
+            "agent_id": agent_id,
+            "category": cat,
+            "alternate_supplier": None,
+            "original_cost": report.get("execution_plan", {}).get("total_cost_eur", 0),
+            "new_cost": None,
+            "cost_delta": None,
+            "original_days": 0,
+            "new_days": None,
+            "delay_delta": None,
+            "message": "No alternate supplier found",
+        }
+
+    best = max(candidates, key=lambda a: a.trust.trust_score if a.trust else 0)
+    products = best.capabilities.products
+    unit_price = products[0].unit_price_eur if products else 0
+    lead_days = products[0].lead_time_days if products else 14
+
+    exec_plan = report.get("execution_plan", {})
+    original_cost = exec_plan.get("total_cost_eur", 0)
+    original_days = 30
+    timeline = exec_plan.get("timeline", {})
+    if "assembly_ready" in timeline:
+        from datetime import datetime
+        try:
+            start = datetime.fromisoformat(timeline.get("procurement_start", "")[:10])
+            end = datetime.fromisoformat(timeline.get("assembly_ready", "")[:10])
+            original_days = (end - start).days
+        except Exception:
+            pass
+
+    cost_per_cat = original_cost / max(len(paths), 1)
+    new_cost = original_cost - cost_per_cat + (unit_price * 2)
+    cost_delta = new_cost - original_cost
+    new_days = max(original_days, lead_days + 5)
+    delay_delta = max(0, new_days - original_days)
+
+    return {
+        "agent_id": agent_id,
+        "category": cat,
+        "alternate_supplier": {"agent_id": best.agent_id, "name": best.name, "unit_price_eur": unit_price, "lead_time_days": lead_days},
+        "original_cost": round(original_cost, 2),
+        "new_cost": round(new_cost, 2),
+        "cost_delta": round(cost_delta, 2),
+        "original_days": original_days,
+        "new_days": new_days,
+        "delay_delta": delay_delta,
+    }

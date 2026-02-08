@@ -163,11 +163,85 @@ class Message(BaseModel):
         populate_by_name = True
 
 
+# ── Product Catalogue ───────────────────────────────────────────────────────
+
+class CatalogueProduct(BaseModel):
+    product_id: str
+    name: str
+    description: str = ""
+    selling_price_eur: float
+    intent_template: str = "Buy all parts required to assemble one {name}"
+    currency: str = "EUR"
+
+
+class PolicySpec(BaseModel):
+    jurisdiction: str = "EU"
+    max_risk_score: float = 0.7
+    min_trust_score: float = 0.70
+    min_esg_score: float = 50
+    forbid_single_supplier: bool = False
+
+
+class PolicyEvaluation(BaseModel):
+    compliant: bool
+    violations: list[dict] = Field(default_factory=list)
+    explanations: list[str] = Field(default_factory=list)
+
+
+class EscalationEvent(BaseModel):
+    escalation_id: str = ""
+    reason: str = ""
+    agent_id: str | None = None
+    trust_score: float | None = None
+    risk_score: float | None = None
+    threshold: float = 0.0
+    timestamp: str = ""
+
+
+class EscalationResponse(BaseModel):
+    escalation_id: str
+    action: str = "proceed"
+
+
+class RiskReport(BaseModel):
+    agent_id: str
+    risk_type: str
+    severity: float
+    timestamp: str = ""
+
+
+class InteractionRecord(BaseModel):
+    agent_id: str
+    event_type: str
+    payload: dict = Field(default_factory=dict)
+    timestamp: str = ""
+
+
+class TrustSubmission(BaseModel):
+    agent_id: str
+    dimension: str
+    score: float
+    context: str = ""
+    rater_id: str = ""
+
+
+class ProfitSummary(BaseModel):
+    total_revenue_eur: float
+    total_cost_eur: float
+    total_profit_eur: float
+    profit_per_item_eur: float
+    quantity: int
+    margin_pct: float
+
+
 # ── Trigger Request ─────────────────────────────────────────────────────────
 
 class TriggerRequest(BaseModel):
-    intent: str = "Buy all parts required to assemble one Ferrari 296 GTB"
+    intent: str | None = None
     budget_eur: float = 500000
+    product_id: str | None = None
+    quantity: int = 1
+    strategy: str = "cost-first"
 
 
 # ── Frontend Data Shapes ────────────────────────────────────────────────────

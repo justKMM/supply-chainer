@@ -9,6 +9,16 @@ from typing import Optional
 from backend.schemas import AgentFact, LiveMessage
 
 
+def _get_reputation_score(agent_id: str) -> float | None:
+    """Get live trust score from reputation ledger if available."""
+    try:
+        from backend.services.trust_service import reputation_ledger
+        score = reputation_ledger.get_score(agent_id)
+        return score.composite_score if score else None
+    except Exception:
+        return None
+
+
 class AgentRegistry:
     """Lightweight in-memory registry supporting register / search / list / deregister."""
 
@@ -16,6 +26,7 @@ class AgentRegistry:
         self._agents: dict[str, AgentFact] = {}
         self._messages: list[LiveMessage] = []
         self._subscribers: list[asyncio.Queue] = []
+        self._deprecated: dict[str, str] = {}  # agent_id -> reason
 
     # ── Registration ─────────────────────────────────────────────────────
 
@@ -32,6 +43,25 @@ class AgentRegistry:
             return True
         return False
 
+    def soft_deprecate(self, agent_id: str, reason: str) -> bool:
+        """Mark agent as deprecated (excluded from search unless explicitly requested)."""
+        if agent_id in self._agents or agent_id in self._deprecated:
+            self._deprecated[agent_id] = reason
+            return True
+        return False
+
+    def get_health_filters(self) -> dict:
+        """Return active filters: min_trust, deprecated_agents, regions."""
+        from backend.config import REGISTRY_MIN_TRUST
+        return {
+            "min_trust": REGISTRY_MIN_TRUST,
+            "deprecated_agents": [
+                {"agent_id": aid, "reason": reason}
+                for aid, reason in self._deprecated.items()
+            ],
+            "regions": [],
+        }
+
     # ── Lookup ───────────────────────────────────────────────────────────
 
     def get(self, agent_id: str) -> Optional[AgentFact]:
@@ -40,15 +70,43 @@ class AgentRegistry:
     def list_all(self) -> list[AgentFact]:
         return list(self._agents.values())
 
+    SUPPLIER_ROLES = frozenset({"tier_1_supplier", "tier_2_supplier", "raw_material_supplier"})
+
+    def list_suppliers(self, role: Optional[str] = None) -> list[AgentFact]:
+        """List all supplier agents (tier_1, tier_2, raw_material)."""
+        results = [
+            a for a in self._agents.values()
+            if a.role in self.SUPPLIER_ROLES
+        ]
+        if role:
+            results = [a for a in results if a.role == role]
+        return results
+
     def search(
         self,
         role: Optional[str] = None,
         capability: Optional[str] = None,
         region: Optional[str] = None,
         certification: Optional[str] = None,
-        min_trust: float = 0.0,
+        min_trust: Optional[float] = None,
+        include_deprecated: bool = False,
     ) -> list[AgentFact]:
+        from backend.config import REGISTRY_MIN_TRUST
+
         results = list(self._agents.values())
+
+        if not include_deprecated and self._deprecated:
+            results = [a for a in results if a.agent_id not in self._deprecated]
+
+        trust_threshold = min_trust if min_trust is not None else REGISTRY_MIN_TRUST
+        if trust_threshold > 0:
+            filtered = []
+            for a in results:
+                score = _get_reputation_score(a.agent_id)
+                effective_score = score if score is not None else (a.trust.trust_score if a.trust else 0)
+                if effective_score >= trust_threshold:
+                    filtered.append(a)
+            results = filtered
 
         if role:
             results = [a for a in results if a.role == role]
@@ -73,12 +131,6 @@ class AgentRegistry:
             results = [
                 a for a in results
                 if any(c.type == certification for c in a.certifications)
-            ]
-
-        if min_trust > 0:
-            results = [
-                a for a in results
-                if a.trust and a.trust.trust_score >= min_trust
             ]
 
         return results
@@ -108,6 +160,7 @@ class AgentRegistry:
     def clear(self):
         self._agents.clear()
         self._messages.clear()
+        self._deprecated.clear()
 
 
 # Global singleton
