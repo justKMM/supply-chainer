@@ -158,7 +158,9 @@ def build_message_content(
         cat = payload.get("category", "")
         agent = payload.get("selected_agent", "")
         count = payload.get("candidates", 0)
-        summary = f"Selected {agent} for {cat}" if agent and cat else "Discovery complete"
+        summary = (
+            f"Selected {agent} for {cat}" if agent and cat else "Discovery complete"
+        )
         detail = f"Screened {count} candidates"
         color = "#00BCD4"
         icon = "check_circle"
@@ -169,5 +171,13 @@ def build_message_content(
         icon = "error"
     else:
         summary, detail = _fallback(payload)
+
+    # Append AI reasoning if present
+    ai_reasoning = payload.get("ai_reasoning")
+    if ai_reasoning:
+        if detail:
+            detail = f"{detail}\n\nReasoning: {ai_reasoning}"
+        else:
+            detail = f"Reasoning: {ai_reasoning}"
 
     return summary, detail, color, icon

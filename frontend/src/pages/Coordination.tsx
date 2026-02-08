@@ -260,6 +260,7 @@ const Coordination = () => {
                   type={msg.type}
                   message={msg.summary}
                   color={msg.color}
+                  detail={msg.detail}
                 />
               ))}
             </div>

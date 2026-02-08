@@ -48,6 +48,7 @@ async def run_negotiation(quotes: dict, report: dict, emit, ts, strategy: str) -
                 "offer_price_eur": offer_price,
                 "discount_pct": discount_ask,
                 "reason": f"Strategy: {strategy}",
+                "ai_reasoning": reasoning,
             },
         )
 
@@ -69,6 +70,7 @@ async def run_negotiation(quotes: dict, report: dict, emit, ts, strategy: str) -
                     "counter_price_eur": counter_price,
                     "discount_pct": supplier_discount,
                     "reason": "Material costs limit flexibility",
+                    "ai_reasoning": reasoning,
                 },
             )
 
@@ -89,6 +91,7 @@ async def run_negotiation(quotes: dict, report: dict, emit, ts, strategy: str) -
                 "offer_price_eur": final_price,
                 "discount_pct": final_discount,
                 "reason": "Deal within budget ceiling",
+                "ai_reasoning": reasoning,
             },
         )
 
