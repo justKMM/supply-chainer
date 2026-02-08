@@ -6,6 +6,7 @@ import type {
   CatalogueProduct,
   PolicyEvaluation,
   PolicySpec,
+  CascadeSummary,
   SupplierSummary,
   TrustSubmission,
   TrustSummary,
@@ -157,6 +158,16 @@ export function simulateSupplierFailure(agent_id: string) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ agent_id }),
   });
+}
+
+// ── Cascade History ─────────────────────────────────────────────────────────
+
+export function getCascades(): Promise<CascadeSummary[]> {
+  return fetchJSON("/api/cascades");
+}
+
+export function getCascadeReport(reportId: string): Promise<CascadeReport> {
+  return fetchJSON(`/api/cascades/${reportId}`);
 }
 
 // ── SSE Stream ──────────────────────────────────────────────────────────────

@@ -168,6 +168,14 @@ export interface CascadeReport {
     chain_verifications: Record<string, { valid: boolean; length: number }>;
   };
   reasoning_log: ReasoningLogEntry[];
+  component_costs?: Array<{
+    supplier_id: string;
+    supplier_name: string;
+    product_name: string;
+    quantity: number;
+    unit_price_eur: number;
+    total_eur: number;
+  }>;
   profit_summary?: ProfitSummary | null;
   policy_evaluation?: PolicyEvaluation | null;
   intent_expansion?: IntentExpansion | null;
@@ -254,6 +262,16 @@ export interface SupplierSummary {
   trust?: {
     trust_score?: number;
   };
+}
+
+export interface CascadeSummary {
+  report_id: string;
+  intent: string;
+  initiated_at: string;
+  status: string;
+  total_cost_eur?: number;
+  total_profit_eur?: number;
+  margin_pct?: number;
 }
 
 // ── Backend AgentFact (from registry) ───────────────────────────────────────

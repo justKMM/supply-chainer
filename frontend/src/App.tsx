@@ -7,6 +7,7 @@ import Dashboard from "./pages/Dashboard";
 import AgentRegistry from "./pages/AgentRegistry";
 import SupplyGraph from "./pages/SupplyGraph";
 import Coordination from "./pages/Coordination";
+import Reports from "./pages/Reports";
 import NotFound from "./pages/NotFound";
 import { CascadeProvider } from "./state/cascadeStore";
 
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/agents" element={<AgentRegistry />} />
             <Route path="/graph" element={<SupplyGraph />} />
             <Route path="/coordination" element={<Coordination />} />
+          <Route path="/reports" element={<Reports />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

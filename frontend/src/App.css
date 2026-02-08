@@ -40,3 +40,35 @@
 .read-the-docs {
   color: #888;
 }
+
+.print-only {
+  display: none;
+}
+
+@media print {
+  body {
+    background: #fff;
+  }
+
+  #root {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+  }
+
+  aside,
+  nav,
+  button,
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .report-print {
+    padding: 0.5in;
+  }
+}

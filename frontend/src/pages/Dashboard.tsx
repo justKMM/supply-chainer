@@ -2,6 +2,7 @@ import { AppLayout } from "@/components/AppLayout";
 import { MetricCard } from "@/components/MetricCard";
 import { EventRow } from "@/components/EventRow";
 import { RoleBadge } from "@/components/RoleBadge";
+import { ReportSummary } from "@/components/ReportSummary";
 import { useSSE } from "@/hooks/useSSE";
 import * as api from "@/api/client";
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -18,6 +19,7 @@ import {
   ArrowUpRight,
   Play,
   Loader2,
+  Printer,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -194,18 +196,28 @@ const Dashboard = () => {
             <div className="text-[10px] text-muted-foreground font-mono">
               {selectedProduct ? `Intent: ${selectedProduct.name}` : "Select a product to build intent"}
             </div>
-            <button
-              onClick={handleTrigger}
-              disabled={triggering || progress.running}
-              className="flex items-center gap-2 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-mono text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {triggering ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Play className="w-4 h-4" />
-              )}
-              {progress.running ? "Cascade Running..." : "Trigger Procurement Cascade"}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => report && window.print()}
+                disabled={!report}
+                className="flex items-center gap-2 px-3 py-2 rounded-md border border-border text-xs font-mono hover:bg-secondary disabled:opacity-50"
+              >
+                <Printer className="w-3 h-3" />
+                Print last run
+              </button>
+              <button
+                onClick={handleTrigger}
+                disabled={triggering || progress.running}
+                className="flex items-center gap-2 px-5 py-2.5 rounded-md bg-primary text-primary-foreground font-mono text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {triggering ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+                {progress.running ? "Cascade Running..." : "Trigger Procurement Cascade"}
+              </button>
+            </div>
           </div>
         </div>
 
@@ -490,6 +502,10 @@ const Dashboard = () => {
               ))}
             </div>
           </div>
+        </div>
+
+        <div className="print-only">
+          {report && <ReportSummary report={report} />}
         </div>
 
         {/* Quick Actions */}

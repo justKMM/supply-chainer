@@ -5,6 +5,7 @@ import {
   Users,
   GitBranch,
   Radio,
+  FileText,
   Zap,
   ChevronLeft,
   ChevronRight,
@@ -17,6 +18,7 @@ const navItems = [
   { title: "Agent Registry", url: "/agents", icon: Users },
   { title: "Supply Graph", url: "/graph", icon: GitBranch },
   { title: "Coordination", url: "/coordination", icon: Radio },
+  { title: "Reports", url: "/reports", icon: FileText },
 ];
 
 export function AppSidebar() {
