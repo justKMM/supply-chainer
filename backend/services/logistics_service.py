@@ -34,10 +34,12 @@ def plan_logistics(final_orders: dict, emit, logistics_agent_id: str = "dhl-logi
             logistics_agent_id,
             logistics_agent.name if logistics_agent else "Logistics Provider",
             "logistics_request",
-            f"Shipment request: {order['product'].name} to Maranello",
-            f"From {origin.city}, {origin.country}. Weight est. {order['quantity'] * random.uniform(2, 15):.0f} kg",
-            "#9C27B0",
-            "truck",
+            summary=None,
+            payload={
+                "product_name": order["product"].name,
+                "origin": f"{origin.city}, {origin.country}",
+                "quantity": order["quantity"],
+            },
         )
 
         duration_hours = round(distance_km / 65, 1)
@@ -47,10 +49,12 @@ def plan_logistics(final_orders: dict, emit, logistics_agent_id: str = "dhl-logi
             agent.agent_id,
             agent.name,
             "logistics_proposal",
-            f"Route: {origin.city} → Maranello, {distance_km}km, EUR {cost:,.0f}",
-            f"Mode: road, Duration: {duration_hours}h, Insurance included",
-            "#9C27B0",
-            "route",
+            summary=None,
+            payload={
+                "route": f"{origin.city} → Maranello, {distance_km}km",
+                "cost_eur": cost,
+                "duration_hours": duration_hours,
+            },
         )
 
         lead_days = order["product"].lead_time_days
