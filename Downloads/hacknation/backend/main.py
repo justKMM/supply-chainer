@@ -211,11 +211,24 @@ async def get_progress():
     }
 
 
-# ── Serve Frontend ───────────────────────────────────────────────────────────
+# ── Serve Frontend (Vite build output) ───────────────────────────────────────
 
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
+FRONTEND_DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
-@app.get("/", response_class=HTMLResponse)
-async def serve_frontend():
-    index_path = FRONTEND_DIR / "index.html"
-    return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+if FRONTEND_DIST.exists():
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="static-assets")
+
+    @app.get("/{full_path:path}", response_class=HTMLResponse)
+    async def serve_frontend(full_path: str):
+        """Serve the Vite SPA — all non-API routes return index.html."""
+        index_path = FRONTEND_DIST / "index.html"
+        if index_path.exists():
+            return HTMLResponse(content=index_path.read_text(encoding="utf-8"))
+        return HTMLResponse(content="<h1>Frontend not built</h1>", status_code=404)
+else:
+    @app.get("/", response_class=HTMLResponse)
+    async def serve_frontend_fallback():
+        return HTMLResponse(
+            content="<h1>Frontend not built</h1><p>Run: <code>cd frontend && npm install && npm run build</code></p>",
+            status_code=404,
+        )
