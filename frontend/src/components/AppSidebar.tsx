@@ -27,14 +27,13 @@ export function AppSidebar() {
   useEffect(() => {
     api.listAgents()
       .then((agents) => setAgentCount(agents.length))
-      .catch(() => {});
+      .catch(() => { });
   }, []);
 
   return (
     <aside
-      className={`${
-        collapsed ? "w-16" : "w-64"
-      } sticky top-0 flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 shrink-0`}
+      className={`${collapsed ? "w-16" : "w-64"
+        } sticky top-0 flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 shrink-0`}
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-16 border-b border-border">
@@ -43,9 +42,9 @@ export function AppSidebar() {
         </div>
         {!collapsed && (
           <div className="overflow-hidden">
-            <h1 className="text-sm font-bold text-foreground tracking-tight">One Click AI</h1>
+            <h1 className="text-sm font-bold text-foreground tracking-tight">Orchestr8</h1>
             <p className="text-[10px] text-muted-foreground font-mono tracking-wider uppercase">
-              NANDA Network
+              Inspired from NANDA Network
             </p>
           </div>
         )}
@@ -60,11 +59,10 @@ export function AppSidebar() {
               key={item.url}
               to={item.url}
               end
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${
-                isActive
-                  ? ""
-                  : "text-sidebar-foreground hover:text-foreground hover:bg-sidebar-accent"
-              }`}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm transition-all ${isActive
+                ? ""
+                : "text-sidebar-foreground hover:text-foreground hover:bg-sidebar-accent"
+                }`}
               activeClassName="bg-primary/10 text-primary glow-border font-medium"
             >
               <item.icon className="w-4 h-4 shrink-0" />
