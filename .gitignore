@@ -1,13 +1,16 @@
+# FastAPI backend
+# Virtual environment
+.venv/
+# Compiled Python files
 __pycache__/
+__pycache__/__pycache__/
 *.pyc
 *.pyo
+# Environment variables
 .env
+# Keys
 *.key
-OpenAI API key.txt
+# Documentation
 *.docx
+# Claude
 .claude/
-
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.vite/
