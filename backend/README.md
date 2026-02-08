@@ -7,16 +7,16 @@ Below is an elaborated, code-grounded report of what happens in `backend/`, with
 ## High-Level Architecture
 
 - **Framework**: FastAPI app that registers routers and serves the frontend.
-  ```python
-  app = FastAPI(title="Ferrari Supply Chain Agents", version="1.0.0")
-  ...
-  app.include_router(registry_router)
-  app.include_router(pubsub_router)
-  app.include_router(reputation_router)
-  app.include_router(stream_router)
-````
+```python
+app = FastAPI(title="Ferrari Supply Chain Agents", version="1.0.0")
+...
+app.include_router(registry_router)
+app.include_router(pubsub_router)
+app.include_router(reputation_router)
+app.include_router(stream_router)
+ ```
 
-* **Structure**: Controllers expose HTTP endpoints; services hold domain logic; schemas define data shapes; adapters encapsulate external dependencies (OpenAI).
+**Structure**: Controllers expose HTTP endpoints; services hold domain logic; schemas define data shapes; adapters encapsulate external dependencies (OpenAI).
 
 ---
 
