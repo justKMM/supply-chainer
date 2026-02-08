@@ -30,7 +30,9 @@ def test_mcp_agent_tools_derivation():
     # Check tool structure
     tool = tools[0]
     assert tool.description
-    assert "inputSchema" in tool.inputSchema
+    assert tool.inputSchema is not None
+    assert "type" in tool.inputSchema
+    assert "properties" in tool.inputSchema
 
 
 def test_mcp_send_to_agent_local_delivery():
@@ -41,6 +43,10 @@ def test_mcp_send_to_agent_local_delivery():
     agents = mcp_agents()
     sender = agents[0]  # QualityAI
     recipient = agents[1]  # PredictMaint
+    
+    # Clear endpoints for local delivery test
+    sender.network.endpoint = ""
+    recipient.network.endpoint = ""
     
     registry.register(sender)
     registry.register(recipient)
@@ -54,6 +60,10 @@ def test_mcp_send_to_agent_local_delivery():
     )
     
     receipt = send_to_agent(msg)
+    
+    # Debug: print receipt details if failed
+    if receipt.status != "accepted":
+        print(f"Receipt status: {receipt.status}, detail: {receipt.detail}")
     
     assert receipt.status == "accepted"
     assert receipt.message_id == msg.message_id
