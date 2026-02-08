@@ -1,0 +1,83 @@
+@import 'leaflet/dist/leaflet.css';
+@import "tailwindcss";
+
+@theme {
+  --color-ferrari-red: #DC143C;
+  --color-ferrari-dark: #8B0000;
+  --color-bg-primary: #0a0a0f;
+  --color-bg-secondary: #12121a;
+  --color-bg-card: #1a1a2e;
+  --color-bg-card-hover: #22223a;
+  --color-text-primary: #e8e8f0;
+  --color-text-secondary: #8888aa;
+  --color-text-muted: #555577;
+  --color-border: #2a2a44;
+  --color-accent-blue: #2196F3;
+  --color-accent-green: #4CAF50;
+  --color-accent-orange: #FF9800;
+  --color-accent-purple: #9C27B0;
+  --color-accent-yellow: #FFC107;
+  --color-glow-red: rgba(220,20,60,0.15);
+  
+  --font-sans: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply bg-bg-primary text-text-primary min-h-screen overflow-x-hidden;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-bg-card border border-border rounded-[14px] overflow-hidden;
+  }
+  
+  .card-header {
+    @apply px-[18px] py-[14px] border-b border-border text-[13px] font-semibold flex items-center justify-between;
+  }
+  
+  .card-body {
+    @apply p-[18px];
+  }
+  
+  .section-title {
+    @apply text-sm font-bold uppercase tracking-[2px] text-text-secondary mb-[14px] flex items-center gap-2;
+  }
+
+  .section-title .dot {
+    @apply w-2 h-2 rounded-full bg-ferrari-red shadow-[0_0_8px_var(--color-ferrari-red)];
+  }
+
+  .empty-state {
+    @apply text-center py-[60px] px-5 text-text-muted;
+  }
+
+  .empty-state .icon {
+    @apply text-5xl mb-4 opacity-30;
+  }
+  
+  .empty-state h3 {
+    @apply text-base font-semibold text-text-secondary mb-2;
+  }
+  
+  .empty-state p {
+    @apply text-[13px] max-w-[400px] mx-auto leading-relaxed;
+  }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  @apply w-1.5;
+}
+::-webkit-scrollbar-track {
+  @apply bg-bg-secondary;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-[3px];
+}
+
+/* Map specific overrides */
+.leaflet-container {
+  @apply rounded-b-[14px];
+}
