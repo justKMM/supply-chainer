@@ -34,7 +34,7 @@ export function AppSidebar() {
     <aside
       className={`${
         collapsed ? "w-16" : "w-64"
-      } flex flex-col border-r border-border bg-sidebar transition-all duration-300 shrink-0`}
+      } sticky top-0 flex h-screen flex-col border-r border-border bg-sidebar transition-all duration-300 shrink-0`}
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-4 h-16 border-b border-border">
