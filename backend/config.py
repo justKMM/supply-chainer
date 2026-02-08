@@ -1,7 +1,9 @@
 """Configuration for the Ferrari Supply Chain Agents system."""
 
+from dotenv import load_dotenv
 import os
 
+load_dotenv()
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 
 OPENAI_MODEL = "gpt-5-nano"

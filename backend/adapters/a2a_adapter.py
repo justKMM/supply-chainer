@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import requests
 from datetime import datetime
 from typing import Any
@@ -127,48 +128,110 @@ def process_task(agent: AgentFact, task: A2ATask, message: A2AMessage) -> A2ATas
 
 # ── Client-side send ────────────────────────────────────────────────────────
 
-def send_a2a(endpoint: str, message: AgentProtocolMessage, agent: AgentFact) -> AgentProtocolReceipt:
+async def send_a2a(endpoint: str, message: AgentProtocolMessage | dict, agent: AgentFact) -> AgentProtocolReceipt:
     """Send a message via A2A protocol.
 
-    If endpoint is empty, performs local in-process delivery (create + process task).
-    Otherwise, POSTs a JSON-RPC tasks/send to the remote endpoint.
+    If endpoint is empty, performs local in-process delivery:
+    - If agent.executor exists, invokes it with message data
+    - Otherwise, creates and processes a task
+
+    Remote delivery POSTs a JSON-RPC tasks/send to the endpoint.
     """
     if not endpoint:
         # Local in-process delivery
-        user_msg = A2AMessage(
-            role="user",
-            parts=[A2APart(type="text", text=str(message.payload) if message.payload else "")],
-        )
-        task = A2ATask(
-            status=A2ATaskStatus(state="submitted"),
-            history=[user_msg],
-        )
-        _task_store[task.id] = task
-        task = process_task(agent, task, user_msg)
+        try:
+            # Extract message data
+            msg_payload = message.get("params", {}).get("task", {}) if isinstance(message, dict) else {}
+            if isinstance(message, dict) and "params" in message:
+                msg_payload = message["params"].get("task", {})
 
-        # Log the message
-        lm = LiveMessage(
-            message_id=message.message_id,
-            from_id=message.from_agent,
-            from_label=message.from_agent,
-            to_id=message.to_agent,
-            to_label=agent.name if agent else message.to_agent,
-            type=message.message_type or "a2a_message",
-            summary=str(message.payload)[:120] if message.payload else "",
-            detail=f"A2A task {task.id} completed (local)",
-        )
-        registry.log_message(lm)
+            # If executor exists, invoke it
+            if agent.executor:
+                try:
+                    executor_result = await agent.executor(msg_payload) if asyncio.iscoroutinefunction(
+                        agent.executor
+                    ) else agent.executor(msg_payload)
+                    task_id = make_id("task")
+                    lm = LiveMessage(
+                        message_id=getattr(message, "message_id", task_id),
+                        from_id=getattr(message, "from_agent", "a2a-local"),
+                        from_label=getattr(message, "from_agent", "a2a-local"),
+                        to_id=agent.agent_id,
+                        to_label=agent.name,
+                        type=getattr(message, "message_type", "a2a_execute"),
+                        summary=str(executor_result)[:120],
+                        detail=f"A2A executed via {agent.framework}",
+                    )
+                    registry.log_message(lm)
+                    return AgentProtocolReceipt(
+                        message_id=getattr(message, "message_id", task_id),
+                        from_agent=getattr(message, "from_agent", "a2a-local"),
+                        to_agent=agent.agent_id,
+                        status="accepted",
+                        detail=f"A2A task executed via {agent.framework}",
+                        details=executor_result,
+                        success=True,
+                    )
+                except Exception as exec_err:
+                    return AgentProtocolReceipt(
+                        message_id=getattr(message, "message_id", make_id("task")),
+                        from_agent=getattr(message, "from_agent", "a2a-local"),
+                        to_agent=agent.agent_id,
+                        status="error",
+                        detail=f"Executor error: {exec_err}",
+                        success=False,
+                    )
 
-        return AgentProtocolReceipt(
-            message_id=message.message_id,
-            from_agent=message.from_agent,
-            to_agent=message.to_agent,
-            status="accepted",
-            detail=f"A2A task {task.id} completed (local)",
-        )
+            # No executor: standard task lifecycle
+            msg_obj = message if hasattr(message, "message_id") else type("Msg", (), message)()
+            user_msg = A2AMessage(
+                role="user",
+                parts=[A2APart(
+                    type="text",
+                    text=str(msg_payload.get("content", "")) if isinstance(msg_payload, dict) else str(msg_payload),
+                )],
+            )
+            task = A2ATask(
+                status=A2ATaskStatus(state="submitted"),
+                history=[user_msg],
+            )
+            _task_store[task.id] = task
+            task = process_task(agent, task, user_msg)
+
+            # Log the message
+            lm = LiveMessage(
+                message_id=getattr(message, "message_id", task.id),
+                from_id=getattr(message, "from_agent", "a2a-local"),
+                from_label=getattr(message, "from_agent", "a2a-local"),
+                to_id=agent.agent_id,
+                to_label=agent.name,
+                type=getattr(message, "message_type", "a2a_message"),
+                summary=str(msg_payload)[:120] if msg_payload else "",
+                detail=f"A2A task {task.id} completed (local)",
+            )
+            registry.log_message(lm)
+
+            return AgentProtocolReceipt(
+                message_id=getattr(message, "message_id", task.id),
+                from_agent=getattr(message, "from_agent", "a2a-local"),
+                to_agent=agent.agent_id,
+                status="accepted",
+                detail=f"A2A task {task.id} completed (local)",
+                success=True,
+            )
+        except Exception as e:
+            return AgentProtocolReceipt(
+                message_id=getattr(message, "message_id", make_id("task")),
+                from_agent=getattr(message, "from_agent", "a2a-local"),
+                to_agent=agent.agent_id,
+                status="error",
+                detail=f"A2A local delivery error: {e}",
+                success=False,
+            )
 
     # Remote delivery: POST JSON-RPC tasks/send
     try:
+        msg_dict = message.model_dump() if hasattr(message, "model_dump") else message
         jsonrpc_request = {
             "jsonrpc": "2.0",
             "id": make_id("rpc"),
@@ -178,7 +241,7 @@ def send_a2a(endpoint: str, message: AgentProtocolMessage, agent: AgentFact) -> 
                 "sessionId": make_id("session"),
                 "message": {
                     "role": "user",
-                    "parts": [{"type": "text", "text": str(message.payload) if message.payload else ""}],
+                    "parts": [{"type": "text", "text": str(msg_dict.get("payload")) if msg_dict.get("payload") else ""}],
                 },
             },
         }
@@ -190,24 +253,27 @@ def send_a2a(endpoint: str, message: AgentProtocolMessage, agent: AgentFact) -> 
         )
         if resp.ok:
             return AgentProtocolReceipt(
-                message_id=message.message_id,
-                from_agent=message.from_agent,
-                to_agent=message.to_agent,
+                message_id=msg_dict.get("message_id", make_id("task")),
+                from_agent=msg_dict.get("from_agent", ""),
+                to_agent=agent.agent_id,
                 status="accepted",
                 detail="A2A delivered (remote)",
+                success=True,
             )
         return AgentProtocolReceipt(
-            message_id=message.message_id,
-            from_agent=message.from_agent,
-            to_agent=message.to_agent,
+            message_id=msg_dict.get("message_id", make_id("task")),
+            from_agent=msg_dict.get("from_agent", ""),
+            to_agent=agent.agent_id,
             status="rejected",
             detail=f"A2A remote HTTP {resp.status_code}",
+            success=False,
         )
     except Exception as exc:
         return AgentProtocolReceipt(
-            message_id=message.message_id,
-            from_agent=message.from_agent,
-            to_agent=message.to_agent,
+            message_id=getattr(message, "message_id", make_id("task")),
+            from_agent=getattr(message, "from_agent", ""),
+            to_agent=agent.agent_id,
             status="error",
             detail=f"A2A send error: {exc}",
+            success=False,
         )
