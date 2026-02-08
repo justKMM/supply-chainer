@@ -38,8 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
 app.include_router(registry_router)
 app.include_router(catalogue_router)
 app.include_router(policy_router)
