@@ -15,11 +15,13 @@ import json
 from backend.adapters.openai_client import get_async_client
 from backend.config import OPENAI_MODEL
 from backend.agents import (
+    a2a_agents,
     CATEGORY_AGENT_MAP,
     compliance_agents,
     core_agents,
     disqualified_agents,
     logistics_agents,
+    mcp_agents,
     supplier_agents,
 )
 from backend.schemas import AgentFact
@@ -208,4 +210,6 @@ def create_seed_agents() -> list[AgentFact]:
         + logistics_agents()
         + compliance_agents()
         + disqualified_agents()
+        + mcp_agents()
+        + a2a_agents()
     )

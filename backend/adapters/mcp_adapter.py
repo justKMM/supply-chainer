@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import requests
 from typing import Any
 
@@ -115,44 +116,101 @@ def build_error_response(request_id: Any, code: int, message: str) -> dict:
 
 # ── Client-side send ────────────────────────────────────────────────────────
 
-def send_mcp(endpoint: str, message: AgentProtocolMessage, agent: AgentFact) -> AgentProtocolReceipt:
+async def send_mcp(endpoint: str, message: AgentProtocolMessage | dict, agent: AgentFact) -> AgentProtocolReceipt:
     """Send a message via MCP protocol.
 
-    If endpoint is empty, performs local in-process delivery.
-    Otherwise, POSTs a JSON-RPC tools/call to the remote endpoint.
+    If endpoint is empty, performs local in-process delivery:
+    - If agent.executor exists, invokes the executor with message data
+    - Otherwise, logs and returns accepted
+
+    Remote delivery POSTs a JSON-RPC tools/call to the endpoint.
     """
     if not endpoint:
-        # Local in-process delivery: log and return accepted
-        lm = LiveMessage(
-            message_id=message.message_id,
-            from_id=message.from_agent,
-            from_label=message.from_agent,
-            to_id=message.to_agent,
-            to_label=agent.name if agent else message.to_agent,
-            type=message.message_type or "mcp_message",
-            summary=str(message.payload)[:120] if message.payload else "",
-            detail="Delivered via MCP (local)",
-        )
-        registry.log_message(lm)
-        return AgentProtocolReceipt(
-            message_id=message.message_id,
-            from_agent=message.from_agent,
-            to_agent=message.to_agent,
-            status="accepted",
-            detail="Delivered via MCP (local)",
-        )
+        # Local in-process delivery
+        try:
+            # Extract message data
+            msg_payload = message.get("params", {}).get("task", {})
+            if isinstance(message, dict) and "params" in message:
+                msg_payload = message["params"].get("input", {}) or message["params"].get("task", {})
+
+            # If executor exists, invoke it
+            if agent.executor:
+                try:
+                    executor_result = await agent.executor(msg_payload) if asyncio.iscoroutinefunction(
+                        agent.executor
+                    ) else agent.executor(msg_payload)
+                    lm = LiveMessage(
+                        message_id=getattr(message, "message_id", make_id("mcp")),
+                        from_id=getattr(message, "from_agent", "mcp-local"),
+                        from_label=getattr(message, "from_agent", "mcp-local"),
+                        to_id=agent.agent_id,
+                        to_label=agent.name,
+                        type=getattr(message, "message_type", "mcp_execute"),
+                        summary=str(executor_result)[:120],
+                        detail=f"MCP executed via {agent.framework}",
+                    )
+                    registry.log_message(lm)
+                    return AgentProtocolReceipt(
+                        message_id=getattr(message, "message_id", make_id("mcp")),
+                        from_agent=getattr(message, "from_agent", "mcp-local"),
+                        to_agent=agent.agent_id,
+                        status="accepted",
+                        detail=f"Executed via {agent.framework}",
+                        details=executor_result,
+                        success=True,
+                    )
+                except Exception as exec_err:
+                    return AgentProtocolReceipt(
+                        message_id=getattr(message, "message_id", make_id("mcp")),
+                        from_agent=getattr(message, "from_agent", "mcp-local"),
+                        to_agent=agent.agent_id,
+                        status="error",
+                        detail=f"Executor error: {exec_err}",
+                        success=False,
+                    )
+
+            # No executor: just log
+            lm = LiveMessage(
+                message_id=getattr(message, "message_id", make_id("mcp")),
+                from_id=getattr(message, "from_agent", "mcp-local"),
+                from_label=getattr(message, "from_agent", "mcp-local"),
+                to_id=agent.agent_id,
+                to_label=agent.name,
+                type=getattr(message, "message_type", "mcp_message"),
+                summary=str(msg_payload)[:120] if msg_payload else "",
+                detail="Delivered via MCP (local)",
+            )
+            registry.log_message(lm)
+            return AgentProtocolReceipt(
+                message_id=getattr(message, "message_id", make_id("mcp")),
+                from_agent=getattr(message, "from_agent", "mcp-local"),
+                to_agent=agent.agent_id,
+                status="accepted",
+                detail="Delivered via MCP (local)",
+                success=True,
+            )
+        except Exception as e:
+            return AgentProtocolReceipt(
+                message_id=getattr(message, "message_id", make_id("mcp")),
+                from_agent=getattr(message, "from_agent", "mcp-local"),
+                to_agent=agent.agent_id,
+                status="error",
+                detail=f"MCP local delivery error: {e}",
+                success=False,
+            )
 
     # Remote delivery: POST JSON-RPC tools/call
     try:
+        msg_dict = message.model_dump() if hasattr(message, "model_dump") else message
         jsonrpc_request = {
             "jsonrpc": "2.0",
             "id": make_id("rpc"),
             "method": "tools/call",
             "params": {
-                "name": message.message_type or "message",
+                "name": msg_dict.get("message_type") or "message",
                 "arguments": {
-                    "payload": message.payload,
-                    "from_agent": message.from_agent,
+                    "payload": msg_dict.get("payload"),
+                    "from_agent": msg_dict.get("from_agent"),
                 },
             },
         }
@@ -164,24 +222,27 @@ def send_mcp(endpoint: str, message: AgentProtocolMessage, agent: AgentFact) -> 
         )
         if resp.ok:
             return AgentProtocolReceipt(
-                message_id=message.message_id,
-                from_agent=message.from_agent,
-                to_agent=message.to_agent,
+                message_id=msg_dict.get("message_id", make_id("mcp")),
+                from_agent=msg_dict.get("from_agent", ""),
+                to_agent=agent.agent_id,
                 status="accepted",
                 detail="Delivered via MCP (remote)",
+                success=True,
             )
         return AgentProtocolReceipt(
-            message_id=message.message_id,
-            from_agent=message.from_agent,
-            to_agent=message.to_agent,
+            message_id=msg_dict.get("message_id", make_id("mcp")),
+            from_agent=msg_dict.get("from_agent", ""),
+            to_agent=agent.agent_id,
             status="rejected",
             detail=f"MCP remote HTTP {resp.status_code}",
+            success=False,
         )
     except Exception as exc:
         return AgentProtocolReceipt(
-            message_id=message.message_id,
-            from_agent=message.from_agent,
-            to_agent=message.to_agent,
+            message_id=getattr(message, "message_id", make_id("mcp")),
+            from_agent=getattr(message, "from_agent", ""),
+            to_agent=agent.agent_id,
             status="error",
             detail=f"MCP send error: {exc}",
+            success=False,
         )

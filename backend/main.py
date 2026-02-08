@@ -49,13 +49,13 @@ app.add_middleware(
 """
 @app.on_event("startup")
 async def startup_seed_agents():
-    #Register all seed agents (core, suppliers, MCP, A2A, etc.) on startup.
+    # Register all seed agents (core, suppliers, MCP, A2A, etc.) on startup.
     agents = create_seed_agents()
     for agent in agents:
         registry.register(agent)
     print(f"✓ Seeded {len(agents)} agents into registry on startup")
-
 """
+
 # ── Routers ───────────────────────────────────────────────────────────────
 
 

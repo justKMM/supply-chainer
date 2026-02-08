@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Any, Optional, Callable, Literal
 from datetime import datetime
 import uuid
 
@@ -139,6 +139,11 @@ class AgentFact(BaseModel):
     registered_at: str = ""
     last_heartbeat: str = ""
     status: str = "active"
+    framework: Literal["langchain", "autogen", "plain_python"] = "plain_python"
+    executor: Optional[Callable] = Field(default=None, exclude=True)  # Not serialized (runtime only)
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 # ── Message Schema (Agent-to-Agent) ─────────────────────────────────────────
@@ -185,6 +190,8 @@ class AgentProtocolReceipt(BaseModel):
     to_agent: str = ""
     status: str = "accepted"
     detail: str = ""
+    details: Any = None  # Can be dict/str for rich response data
+    success: bool = True  # Explicit success flag
 
 
 # ── Product Catalogue ───────────────────────────────────────────────────────
@@ -322,3 +329,92 @@ class DashboardData(BaseModel):
     negotiations: list[dict] = Field(default_factory=list)
     discovery_results: dict = Field(default_factory=dict)
     compliance_summary: dict = Field(default_factory=dict)
+
+
+# ── MCP (JSON-RPC 2.0) Models ─────────────────────────────────────────────
+
+class JsonRpcRequest(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Any = None
+    method: str
+    params: dict = Field(default_factory=dict)
+
+class JsonRpcResponse(BaseModel):
+    jsonrpc: str = "2.0"
+    id: Any = None
+    result: Any = None
+    error: Optional[dict] = None
+
+class McpToolDefinition(BaseModel):
+    name: str
+    description: str = ""
+    inputSchema: dict = Field(default_factory=lambda: {"type": "object", "properties": {}})
+
+class McpToolsListResult(BaseModel):
+    tools: list[McpToolDefinition] = Field(default_factory=list)
+
+class McpToolCallParams(BaseModel):
+    name: str
+    arguments: dict = Field(default_factory=dict)
+
+class McpToolCallResult(BaseModel):
+    content: list[dict] = Field(default_factory=list)
+    isError: bool = False
+
+
+# ── A2A (Google Agent-to-Agent) Models ─────────────────────────────────────
+
+class A2AAgentSkill(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    tags: list[str] = Field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
+
+class A2AAgentCapabilities(BaseModel):
+    streaming: bool = False
+    pushNotifications: bool = False
+    stateTransitionHistory: bool = True
+
+class A2AAgentCard(BaseModel):
+    name: str
+    description: str = ""
+    url: str = ""
+    version: str = "1.0"
+    capabilities: A2AAgentCapabilities = Field(default_factory=A2AAgentCapabilities)
+    skills: list[A2AAgentSkill] = Field(default_factory=list)
+    defaultInputModes: list[str] = Field(default_factory=lambda: ["text/plain"])
+    defaultOutputModes: list[str] = Field(default_factory=lambda: ["text/plain"])
+
+class A2APart(BaseModel):
+    type: str = "text"
+    text: str = ""
+
+class A2AMessage(BaseModel):
+    role: str = "user"
+    parts: list[A2APart] = Field(default_factory=list)
+
+class A2ATaskStatus(BaseModel):
+    state: str = "submitted"  # submitted | working | completed | failed | canceled
+    message: Optional[A2AMessage] = None
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+
+class A2AArtifact(BaseModel):
+    name: str = ""
+    description: str = ""
+    parts: list[A2APart] = Field(default_factory=list)
+    index: int = 0
+    append: bool = False
+    lastChunk: bool = True
+
+class A2ATask(BaseModel):
+    id: str = Field(default_factory=lambda: make_id("task"))
+    sessionId: str = Field(default_factory=lambda: make_id("session"))
+    status: A2ATaskStatus = Field(default_factory=A2ATaskStatus)
+    artifacts: list[A2AArtifact] = Field(default_factory=list)
+    history: list[A2AMessage] = Field(default_factory=list)
+
+class A2ATaskSendParams(BaseModel):
+    id: str = Field(default_factory=lambda: make_id("task"))
+    sessionId: str = ""
+    message: A2AMessage = Field(default_factory=A2AMessage)
