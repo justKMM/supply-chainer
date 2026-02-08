@@ -29,7 +29,7 @@ class Product(BaseModel):
     name: str
     category: str
     subcategory: Optional[str] = None
-    specifications: dict = {}
+    specifications: dict = Field(default_factory=dict)
     unit_price_eur: float
     currency: str = "EUR"
     min_order_quantity: int = 1
@@ -40,8 +40,8 @@ class ProductionCapacity(BaseModel):
     current_utilization_pct: float
 
 class Capabilities(BaseModel):
-    products: list[Product] = []
-    services: list[str] = []
+    products: list[Product] = Field(default_factory=list)
+    services: list[str] = Field(default_factory=list)
     production_capacity: Optional[ProductionCapacity] = None
 
 class Identity(BaseModel):
@@ -73,8 +73,8 @@ class SiteInfo(BaseModel):
 
 class LocationInfo(BaseModel):
     headquarters: Optional[Location] = None
-    manufacturing_sites: list[SiteInfo] = []
-    shipping_regions: list[str] = []
+    manufacturing_sites: list[SiteInfo] = Field(default_factory=list)
+    shipping_regions: list[str] = Field(default_factory=list)
 
 class ESGRating(BaseModel):
     provider: str
@@ -83,8 +83,8 @@ class ESGRating(BaseModel):
     valid_until: Optional[str] = None
 
 class Compliance(BaseModel):
-    jurisdictions: list[str] = []
-    regulations: list[str] = []
+    jurisdictions: list[str] = Field(default_factory=list)
+    regulations: list[str] = Field(default_factory=list)
     sanctions_clear: bool = True
     esg_rating: Optional[ESGRating] = None
 
@@ -94,8 +94,8 @@ class InsuranceInfo(BaseModel):
 
 class Policies(BaseModel):
     payment_terms: str = "Net 30"
-    incoterms: list[str] = []
-    accepted_currencies: list[str] = ["EUR"]
+    incoterms: list[str] = Field(default_factory=list)
+    accepted_currencies: list[str] = Field(default_factory=lambda: ["EUR"])
     insurance: Optional[InsuranceInfo] = None
     min_contract_value_eur: float = 0
     nda_required: bool = False
@@ -113,7 +113,7 @@ class NetworkInfo(BaseModel):
     endpoint: str = ""
     protocol: str = "HTTP/JSON"
     api_version: str = "1.0"
-    supported_message_types: list[str] = []
+    supported_message_types: list[str] = Field(default_factory=list)
     framework: str = "plain_python"
     heartbeat_url: str = ""
 
@@ -129,13 +129,13 @@ class AgentFact(BaseModel):
     description: str = ""
     capabilities: Capabilities = Capabilities()
     identity: Optional[Identity] = None
-    certifications: list[Certification] = []
+    certifications: list[Certification] = Field(default_factory=list)
     location: Optional[LocationInfo] = None
     compliance: Optional[Compliance] = None
     policies: Optional[Policies] = None
     trust: Optional[Trust] = None
     network: Optional[NetworkInfo] = None
-    upstream_dependencies: list[UpstreamDependency] = []
+    upstream_dependencies: list[UpstreamDependency] = Field(default_factory=list)
     registered_at: str = ""
     last_heartbeat: str = ""
     status: str = "active"
@@ -146,7 +146,7 @@ class AgentFact(BaseModel):
 class MessageMetadata(BaseModel):
     hop_count: int = 1
     origin: str = ""
-    trace_path: list[str] = []
+    trace_path: list[str] = Field(default_factory=list)
 
 class Message(BaseModel):
     message_id: str = Field(default_factory=lambda: make_id("msg"))
@@ -156,8 +156,8 @@ class Message(BaseModel):
     to_agent: str = Field(alias="to", default="")
     type: str = ""
     priority: str = "normal"
-    payload: dict = {}
-    metadata: MessageMetadata = MessageMetadata()
+    payload: dict = Field(default_factory=dict)
+    metadata: MessageMetadata = Field(default_factory=MessageMetadata)
 
     class Config:
         populate_by_name = True
@@ -213,13 +213,13 @@ class HeroMetric(BaseModel):
     trend: Optional[str] = None
 
 class DashboardData(BaseModel):
-    hero_metrics: list[HeroMetric] = []
-    cost_breakdown: list[dict] = []
-    timeline_items: list[dict] = []
-    supplier_markers: list[dict] = []
-    supplier_routes: list[dict] = []
-    risk_items: list[dict] = []
-    reasoning_log: list[dict] = []
-    negotiations: list[dict] = []
-    discovery_results: dict = {}
-    compliance_summary: dict = {}
+    hero_metrics: list[HeroMetric] = Field(default_factory=list)
+    cost_breakdown: list[dict] = Field(default_factory=list)
+    timeline_items: list[dict] = Field(default_factory=list)
+    supplier_markers: list[dict] = Field(default_factory=list)
+    supplier_routes: list[dict] = Field(default_factory=list)
+    risk_items: list[dict] = Field(default_factory=list)
+    reasoning_log: list[dict] = Field(default_factory=list)
+    negotiations: list[dict] = Field(default_factory=list)
+    discovery_results: dict = Field(default_factory=dict)
+    compliance_summary: dict = Field(default_factory=dict)

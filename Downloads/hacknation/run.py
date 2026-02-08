@@ -11,7 +11,9 @@ import uvicorn
 import webbrowser
 import threading
 import time
+from dotenv import load_dotenv
 
+load_dotenv()
 
 def open_browser():
     time.sleep(2)

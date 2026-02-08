@@ -8,18 +8,32 @@ Each agent is an independent actor that can:
 """
 
 from __future__ import annotations
-import json, asyncio
-from datetime import datetime, timedelta
-from openai import AsyncOpenAI
-from backend.config import OPENAI_API_KEY, OPENAI_MODEL
+
+import copy
+import json
+
+from backend.adapters.openai_client import get_async_client
+from backend.config import OPENAI_MODEL
 from backend.schemas import (
-    AgentFact, Capabilities, Product, ProductionCapacity,
-    Identity, Certification, LocationInfo, Location, SiteInfo,
-    Compliance, ESGRating, Policies, InsuranceInfo, Trust,
-    NetworkInfo, UpstreamDependency, LiveMessage, make_id,
+    AgentFact,
+    Capabilities,
+    Product,
+    ProductionCapacity,
+    Identity,
+    Certification,
+    LocationInfo,
+    Location,
+    SiteInfo,
+    Compliance,
+    ESGRating,
+    Policies,
+    InsuranceInfo,
+    Trust,
+    NetworkInfo,
+    UpstreamDependency,
 )
 
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+client = get_async_client()
 
 
 # ── OpenAI reasoning helper ─────────────────────────────────────────────────
@@ -71,34 +85,45 @@ async def ai_decompose_bom(intent: str) -> list[dict]:
             temperature=0.3,
         )
         text = resp.choices[0].message.content.strip()
-        if text.startswith("```"):
-            text = text.split("```")[1]
-            if text.startswith("json"):
-                text = text[4:]
-        return json.loads(text)
+        return _parse_json_array(text)
+    except (json.JSONDecodeError, KeyError, IndexError):
+        return _default_bom()
     except Exception:
         return _default_bom()
 
 
+DEFAULT_BOM: list[dict] = [
+    {"category": "powertrain", "parts_count": 12,
+     "key_components": ["V6 Engine Block", "Turbocharger Assembly", "8-Speed DCT Gearbox"]},
+    {"category": "braking_system", "parts_count": 6,
+     "key_components": ["Carbon Ceramic Disc 396mm", "Brake Caliper Set", "Brake Fluid Reservoir"]},
+    {"category": "body_chassis", "parts_count": 8,
+     "key_components": ["Carbon Fiber Monocoque", "Aluminum Subframe", "Body Panels"]},
+    {"category": "electronics", "parts_count": 9,
+     "key_components": ["ECU", "Infotainment Unit", "Sensor Array"]},
+    {"category": "interior", "parts_count": 5,
+     "key_components": ["Leather Seat Assembly", "Steering Wheel", "Dashboard Module"]},
+    {"category": "suspension", "parts_count": 4,
+     "key_components": ["MagneRide Dampers", "Control Arms", "Anti-Roll Bar"]},
+    {"category": "wheels_tires", "parts_count": 2,
+     "key_components": ["Forged Alloy Wheels 20\"", "Pirelli P Zero Tires"]},
+    {"category": "exhaust_emissions", "parts_count": 1,
+     "key_components": ["Catalytic Converter + Exhaust System"]},
+]
+
+
+def _parse_json_array(text: str) -> list[dict]:
+    """Extract and parse a JSON array from model output."""
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```")[1].strip()
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:].strip()
+    return json.loads(cleaned)
+
+
 def _default_bom() -> list[dict]:
-    return [
-        {"category": "powertrain", "parts_count": 12,
-         "key_components": ["V6 Engine Block", "Turbocharger Assembly", "8-Speed DCT Gearbox"]},
-        {"category": "braking_system", "parts_count": 6,
-         "key_components": ["Carbon Ceramic Disc 396mm", "Brake Caliper Set", "Brake Fluid Reservoir"]},
-        {"category": "body_chassis", "parts_count": 8,
-         "key_components": ["Carbon Fiber Monocoque", "Aluminum Subframe", "Body Panels"]},
-        {"category": "electronics", "parts_count": 9,
-         "key_components": ["ECU", "Infotainment Unit", "Sensor Array"]},
-        {"category": "interior", "parts_count": 5,
-         "key_components": ["Leather Seat Assembly", "Steering Wheel", "Dashboard Module"]},
-        {"category": "suspension", "parts_count": 4,
-         "key_components": ["MagneRide Dampers", "Control Arms", "Anti-Roll Bar"]},
-        {"category": "wheels_tires", "parts_count": 2,
-         "key_components": ["Forged Alloy Wheels 20\"", "Pirelli P Zero Tires"]},
-        {"category": "exhaust_emissions", "parts_count": 1,
-         "key_components": ["Catalytic Converter + Exhaust System"]},
-    ]
+    return copy.deepcopy(DEFAULT_BOM)
 
 
 # ── Seed Data: Pre-built AgentFacts for all supply chain actors ─────────────

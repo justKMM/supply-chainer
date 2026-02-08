@@ -1,28 +1,18 @@
 """
 Network-Wide Intelligence Feed
 
-Aggregates real-world signals and pushes typed events into the agent network:
-  - Weather disruptions affecting logistics routes
-  - Regulatory changes impacting compliance
-  - Commodity price movements affecting material costs
-  - Port congestion impacting shipping timelines
-  - Quality recall notices for components
-  - Geopolitical events affecting trade routes
-
-Uses OpenAI to generate realistic, contextual signals and agent reactions.
+Aggregates real-world signals and pushes typed events into the agent network.
 """
 
 from __future__ import annotations
-import asyncio, random
-from datetime import datetime, timedelta
-from backend.config import OPENAI_API_KEY, OPENAI_MODEL
-from backend.pubsub import EventBus, SupplyChainEvent, DisruptionCategory
-from backend.schemas import LiveMessage, make_id
-from backend.registry import registry
-from backend.agents import ai_reason
-from openai import AsyncOpenAI
 
-client = AsyncOpenAI(api_key=OPENAI_API_KEY)
+import asyncio
+import random
+
+from backend.services.pubsub_service import DisruptionCategory, SupplyChainEvent
+from backend.schemas import LiveMessage, make_id
+from backend.services.agent_service import ai_reason
+from backend.services.registry_service import registry
 
 
 # ── Intelligence Signal Templates ────────────────────────────────────────────
@@ -170,7 +160,7 @@ SIGNAL_TEMPLATES = [
 
 # ── Intelligence Feed Runner ─────────────────────────────────────────────────
 
-async def generate_intelligence_signals(event_bus: EventBus, count: int = 5) -> list[dict]:
+async def generate_intelligence_signals(event_bus, count: int = 5) -> list[dict]:
     """Generate realistic intelligence signals and push them through the event bus."""
     results = []
     selected = random.sample(SIGNAL_TEMPLATES, min(count, len(SIGNAL_TEMPLATES)))
@@ -193,10 +183,10 @@ async def generate_intelligence_signals(event_bus: EventBus, count: int = 5) -> 
 
         # Emit to live feed
         severity_colors = {"low": "#4CAF50", "medium": "#FF9800", "high": "#F44336", "critical": "#D32F2F"}
-        severity_icons = {"low": "info", "medium": "warning", "high": "alert", "critical": "alert"}
 
         _emit_intel(
-            event.source, event.category.value,
+            event.source,
+            event.category.value,
             f"INTEL: {event.title}",
             f"Severity: {event.severity.upper()} | Delivered to {len(recipients)} agents | {event.description[:120]}...",
             severity_colors.get(event.severity, "#FF9800"),
@@ -205,26 +195,30 @@ async def generate_intelligence_signals(event_bus: EventBus, count: int = 5) -> 
         # Generate AI reaction from Ferrari Procurement
         if recipients:
             reaction = await ai_reason(
-                "Ferrari Procurement AI", "procurement_agent",
+                "Ferrari Procurement AI",
+                "procurement_agent",
                 f"Intelligence alert received: {event.title}. {event.description} "
                 f"Affected categories: {', '.join(event.affected_categories)}. "
                 f"Recommended actions: {'; '.join(event.recommended_actions[:2])}. "
-                f"What is your immediate response?"
+                f"What is your immediate response?",
             )
 
             _emit_intel(
-                "Ferrari Procurement", "intel_response",
+                "Ferrari Procurement",
+                "intel_response",
                 f"Response to: {event.title[:60]}",
                 reaction,
                 "#DC143C",
             )
 
-            results.append({
-                "event": event.model_dump(),
-                "recipients": recipients,
-                "recipient_count": len(recipients),
-                "ai_reaction": reaction,
-            })
+            results.append(
+                {
+                    "event": event.model_dump(),
+                    "recipients": recipients,
+                    "recipient_count": len(recipients),
+                    "ai_reaction": reaction,
+                }
+            )
 
         await asyncio.sleep(0.2)
 
