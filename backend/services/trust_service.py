@@ -14,7 +14,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from backend.schemas import make_id
+from backend.schemas import make_id, TrustSubmission
 
 
 # ── Transaction Record ───────────────────────────────────────────────────────
@@ -124,11 +124,14 @@ class ReputationScore(BaseModel):
 class ReputationLedger:
     """Immutable ledger of transaction records and attestations."""
 
+    CONTEXTUAL_DIMENSIONS = frozenset({"on_time_delivery", "pricing_honesty", "quality", "compliance", "reliability"})
+
     def __init__(self):
         self._transactions: list[TransactionRecord] = []
         self._attestations: list[Attestation] = []
         self._scores: dict[str, ReputationScore] = {}
         self._agent_last_hash: dict[str, str] = {}  # chain integrity
+        self._contextual_submissions: list[dict] = []  # weighted by rater trust
 
     def record_transaction(self, record: TransactionRecord) -> list[Attestation]:
         """Record a transaction and auto-generate attestations."""
@@ -249,6 +252,20 @@ class ReputationLedger:
         self._agent_last_hash[record.agent_id] = att.hash
         self._attestations.extend(attestations)
 
+        try:
+            from backend.services.memory_service import memory_service
+            memory_service.record_interaction(
+                record.agent_id,
+                "final_price",
+                {"price": record.final_price_eur, "on_time": record.on_time, "price_honored": record.price_honored},
+            )
+            if not record.on_time:
+                memory_service.record_interaction(record.agent_id, "delivery_late", {"variance_days": record.delivery_variance_days})
+            if not record.price_honored and record.quoted_price_eur > 0:
+                memory_service.record_interaction(record.agent_id, "price_increase_post_order", {"quoted": record.quoted_price_eur, "final": record.final_price_eur})
+        except Exception:
+            pass
+
         # Recompute score
         self._recompute_score(record.agent_id, record.agent_name)
         return attestations
@@ -307,6 +324,45 @@ class ReputationLedger:
             total_attestations=len(agent_attestations),
             trend=trend,
         )
+
+    def submit_trust_rating(self, submission: TrustSubmission) -> dict:
+        """Submit contextual trust rating; weight by rater's own trust (web-of-trust)."""
+        rater_score = self.get_score(submission.rater_id)
+        rater_trust = rater_score.composite_score if rater_score else 0.5
+        effective_weight = max(0.3, rater_trust)
+        effective_score = submission.score * effective_weight
+        record = {
+            "agent_id": submission.agent_id,
+            "dimension": submission.dimension,
+            "score": submission.score,
+            "context": submission.context,
+            "rater_id": submission.rater_id,
+            "effective_score": effective_score,
+            "effective_weight": effective_weight,
+        }
+        self._contextual_submissions.append(record)
+        return record
+
+    def get_contextual_score(self, agent_id: str, dimension: str | None = None) -> dict:
+        """Get contextual trust scores for agent (optionally by dimension)."""
+        subset = [s for s in self._contextual_submissions if s["agent_id"] == agent_id]
+        if dimension:
+            subset = [s for s in subset if s["dimension"] == dimension]
+        if not subset:
+            return {"agent_id": agent_id, "dimension": dimension, "score": None, "count": 0}
+        total_weighted = sum(s["effective_score"] for s in subset)
+        total_weight = sum(s["effective_weight"] for s in subset)
+        avg = total_weighted / total_weight if total_weight > 0 else 0.0
+        by_dim = {}
+        for s in subset:
+            d = s["dimension"]
+            if d not in by_dim:
+                by_dim[d] = {"scores": [], "weighted_sum": 0, "weight_sum": 0}
+            by_dim[d]["scores"].append(s["effective_score"])
+            by_dim[d]["weighted_sum"] += s["effective_score"]
+            by_dim[d]["weight_sum"] += s["effective_weight"]
+        dim_scores = {d: v["weighted_sum"] / v["weight_sum"] if v["weight_sum"] else 0 for d, v in by_dim.items()}
+        return {"agent_id": agent_id, "dimension": dimension, "score": round(avg, 3), "count": len(subset), "by_dimension": dim_scores}
 
     def get_score(self, agent_id: str) -> ReputationScore | None:
         return self._scores.get(agent_id)
@@ -382,6 +438,7 @@ class ReputationLedger:
         }
 
     def clear(self):
+        """Clear transactions/attestations (cascade reset). Contextual submissions persist."""
         self._transactions.clear()
         self._attestations.clear()
         self._scores.clear()
@@ -394,6 +451,12 @@ reputation_ledger = ReputationLedger()
 
 def record_transactions(final_orders: dict, emit) -> dict:
     """Record transactions and return updated reputation summary."""
+    try:
+        from backend.services.memory_service import memory_service
+        memory_service.record_interaction("ferrari-procurement-01", "first_quote", {"orders_count": len(final_orders)})
+    except Exception:
+        pass
+
     for _, order in final_orders.items():
         agent = order["agent"]
         product = order["product"]

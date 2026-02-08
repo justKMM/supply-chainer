@@ -28,6 +28,9 @@ from backend.controllers.registry_controller import router as registry_router
 from backend.controllers.pubsub_controller import router as pubsub_router
 from backend.controllers.reputation_controller import router as reputation_router
 from backend.controllers.stream_controller import router as stream_router
+from backend.controllers.catalogue_controller import router as catalogue_router
+from backend.controllers.policy_controller import router as policy_router
+from backend.controllers.escalation_controller import router as escalation_router
 
 app = FastAPI(title="Ferrari Supply Chain Agents", version="1.0.0")
 
@@ -40,6 +43,9 @@ app.add_middleware(
 
 
 app.include_router(registry_router)
+app.include_router(catalogue_router)
+app.include_router(policy_router)
+app.include_router(escalation_router)
 app.include_router(pubsub_router)
 app.include_router(reputation_router)
 app.include_router(stream_router)

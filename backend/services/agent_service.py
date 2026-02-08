@@ -53,6 +53,42 @@ async def ai_reason(agent_name: str, role: str, prompt: str) -> str:
         return f"[Reasoning unavailable: {e}]"
 
 
+async def ai_expand_intent(intent: str) -> dict:
+    """Expand high-level intent into component, logistics, and compliance sub-intents."""
+    try:
+        resp = await client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an intent resolver for Ferrari supply chain. Given a procurement intent, "
+                        "return ONLY valid JSON object with keys: component_intents, logistics_intents, compliance_intents. "
+                        "component_intents: array of component sourcing intents (e.g. \"Source EU-compliant brake systems\"). "
+                        "logistics_intents: array of logistics intents (e.g. \"Coordinate EU road freight to Maranello\"). "
+                        "compliance_intents: array of compliance intents (e.g. \"Validate IATF_16949 certification\"). "
+                        "Each array should have 1-3 items."
+                    ),
+                },
+                {"role": "user", "content": intent},
+            ],
+            max_tokens=400,
+            temperature=0.3,
+        )
+        text = resp.choices[0].message.content.strip()
+        if "```" in text:
+            text = text.split("```")[1].strip()
+            if text.startswith("json"):
+                text = text[4:].strip()
+        return json.loads(text)
+    except Exception:
+        return {
+            "component_intents": [f"Source components for {intent[:80]}"],
+            "logistics_intents": ["Coordinate EU road freight to Maranello"],
+            "compliance_intents": ["Validate IATF_16949 and EU_REACH compliance"],
+        }
+
+
 async def ai_decompose_bom(intent: str) -> list[dict]:
     """Use OpenAI to decompose an intent into a Bill of Materials."""
     try:
